@@ -1,0 +1,377 @@
+body {
+  font-family: system-ui, sans-serif;
+  background: #1a1a1f;
+  color: #e8e8ec;
+  margin: 0;
+  padding: 16px;
+}
+
+h1 { margin: 0 0 12px; font-size: 20px; }
+
+.tabBar { display: flex; gap: 4px; margin-bottom: 16px; }
+.tabBtn {
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.tabBtn.active { background: #3a3a45; color: #fff; }
+
+.tabPane { display: none; }
+.tabPane.active { display: block; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.transportGroup { display: flex; align-items: center; gap: 4px; }
+.transportBtn {
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.transportBtn.active { background: #4a8a4a; color: #fff; }
+
+#transportLabel.armed {
+  color: #e0b84a;
+  animation: armedPulse 1s ease-in-out infinite;
+}
+@keyframes armedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.clockSourceGroup { display: flex; align-items: center; gap: 4px; color: #999; }
+.clockSourceBtn {
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.clockSourceBtn.active { background: #4a6a9a; color: #fff; }
+
+.tempoLabel {
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: bold;
+  color: #6ad8ff;
+  margin-left: 4px;
+}
+
+.panelStateLabel {
+  font-family: monospace;
+  font-size: 13px;
+  color: #ffaa55;
+}
+
+.track {
+  margin-bottom: 20px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 3px solid transparent; /* reserves space so the focus border below doesn't shift layout when it appears */
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.3s, transform 0.3s;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Add/remove animation (plan 4.9) - a brief fade/slide rather than an
+   instant pop-in/out when a track is added or removed (milestone 13). */
+.track.trackEnter, .track.trackExit {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.trackBadge {
+  font-size: 11px;
+  font-weight: normal;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.trackBadge.cvBadge { background: #2a5a4a; color: #9adfc0; }
+.trackBadge.midiBadge { background: #4a3a6a; color: #c0a0ff; }
+
+/* Large, high-contrast indicator for which track the physical panel is
+   currently editing - meant to be visible at a glance/from a distance
+   (e.g. standing at a synth across the room), not just up close on the
+   one scrubbed step (.step.panelFocus, which stays for that finer detail). */
+.track.panelFocusTrack {
+  border-color: #ffaa55;
+  box-shadow: 0 0 20px 4px rgba(255, 170, 85, 0.5);
+}
+.track h3 { margin: 0 0 6px; font-size: 14px; color: #aaa; }
+
+.timeSigControls { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #999; margin-bottom: 6px; }
+.timeSigModeBtn {
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.timeSigModeBtn.active { background: #4a6a9a; color: #fff; }
+.timeSigControls input { background: #14141a; color: #ddd; border: 1px solid #444; border-radius: 3px; padding: 2px 4px; }
+
+.scaleControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+.scaleControls select, .scaleControls input {
+  background: #14141a;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+.scaleControls button {
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.scaleControls button:hover { background: #3a3a45; }
+
+.randomizeUndo { color: #ffaa55; font-size: 12px; margin-left: 4px; }
+.randomizeUndo a { color: #6ad8ff; text-decoration: underline; cursor: pointer; }
+
+.patternBankRow { font-size: 13px; color: #999; }
+.slot {
+  width: 28px;
+  background: #2a2a32;
+  color: #ccc;
+  border: none;
+  padding: 4px 0;
+  margin-right: 2px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.slot.used { background: #2a5a3a; color: #fff; }
+.slot.active { outline: 2px solid #6ad8ff; box-shadow: 0 0 4px #6ad8ff; }
+.patternBankStatus { color: #ffaa55; margin-left: 8px; }
+
+.diagLogPanel { margin-bottom: 12px; }
+.diagLogToolbar { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #999; margin-bottom: 6px; }
+.diagLogSynced { color: #6ad8ff; margin-left: auto; }
+.diagLogTable { width: 100%; max-height: 240px; display: block; overflow-y: auto; font-size: 11px; font-family: monospace; }
+.diagLogTable thead { color: #999; }
+.diagLogTable td, .diagLogTable th { border: 1px solid #333; padding: 2px 6px; text-align: left; }
+.diagLogTable tr.diag-sysexrejected td { color: #ff8080; }
+.diagLogTable tr.diag-flashsaveload td { color: #ffaa55; }
+
+.ribbon {
+  display: flex;
+  gap: 2px;
+  height: 80px;
+  background: #14141a;
+  padding: 4px;
+  border-radius: 4px;
+  position: relative; /* anchors .playheadIndicator */
+}
+
+/* A thin traveling line, not a box outlining the whole cell - the earlier
+   bordered-box version visually competed with the per-step gate/accent
+   glow, reading as two confusing effects rather than one clear playhead. */
+.playheadIndicator {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  margin-left: -1.5px; /* centers the line on the `left` position set in JS */
+  background: #6ad;
+  box-shadow: 0 0 8px 2px #6ad;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+  transition: left 0.08s linear;
+}
+
+.step {
+  flex: 1;
+  position: relative;
+  background: #252530;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+}
+
+.step.editFlash { animation: editFlashPulse 0.3s ease-out; }
+@keyframes editFlashPulse {
+  0% { background: #4a8adf; }
+  100% { background: #252530; }
+}
+
+.step.gateFlash .pitchBar { animation: gateFlashFill var(--gateFlashDuration, 0.2s) ease-out; }
+@keyframes gateFlashFill {
+  0% { filter: brightness(2.2); }
+  100% { filter: brightness(1); }
+}
+
+.step.accentFlash .pitchBar { animation: accentFlashGlow var(--gateFlashDuration, 0.2s) ease-out; }
+@keyframes accentFlashGlow {
+  0% { box-shadow: 0 0 16px 6px #fff6c0; filter: brightness(2.2); }
+  100% { box-shadow: 0 0 6px 2px #ffe070; filter: brightness(1); }
+}
+.step.rest { background: #1c1c22; }
+.step.barEnd { margin-right: 6px; border-right: 1px solid #444; }
+
+.pitchBar {
+  width: 100%;
+  background: #6a8adf;
+  border-radius: 0 0 2px 2px;
+}
+
+/* Matches REST_BAND (18%) in app.js - keep these in sync. */
+.restZone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 18%;
+  background: #553333;
+  border-radius: 0 0 2px 2px;
+  border-top: 1px dashed #885555;
+}
+.step.rest .restZone { background: #884444; }
+
+/* Tie: a distinct visual channel (left border) so it doesn't collide with
+   the pitch bar or rest zone on a small cell (plan 4.2/EvoSeq precedent). */
+.step.tied { border-left: 3px solid #c060ff; }
+
+/* Shows which step is currently scrubbed on the physical panel (Middle/
+   Step-Edit page) - a dashed outline, deliberately distinct from the
+   playhead (a thin solid traveling line) and the gate/accent glow, so the
+   three effects don't read as the same thing. */
+.step.panelFocus { outline: 2px dashed #ffaa55; outline-offset: 1px; }
+
+/* Accent: brighter glow on the pitch bar itself, not a separate element -
+   visible at a glance without adding more clutter to the cell. */
+.step.accent .pitchBar { box-shadow: 0 0 6px 2px #ffe070; }
+
+.noteLabel {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  font-family: monospace;
+  color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ratchetBadge {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-family: monospace;
+  color: #ffaa55;
+  z-index: 1;
+}
+
+.gateLabel { font-size: 11px; color: #777; margin: 4px 0 2px; }
+.gateRibbon {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  background: #14141a;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.gateStep {
+  flex: 1;
+  position: relative;
+  background: #252530;
+  border-radius: 2px;
+  display: flex;
+  align-items: flex-end;
+}
+.gateStep.barEnd { margin-right: 6px; border-right: 1px solid #444; }
+.gateFill {
+  width: 100%;
+  background: #5a9a6a;
+  border-radius: 0 0 2px 2px;
+}
+
+.lockBtn {
+  background: #2a2a32;
+  color: #999;
+  border: none;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.lockBtn.active { background: #9a6a2a; color: #fff; }
+#globalLockBtn.active { background: #9a6a2a; color: #fff; }
+#globalMuteBtn.active { background: #9a3a3a; color: #fff; }
+
+.muteBtn, .soloBtn {
+  background: #2a2a32;
+  color: #999;
+  border: none;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.muteBtn.active { background: #9a3a3a; color: #fff; }
+.soloBtn.active { background: #c0a030; color: #1a1a1f; }
+
+/* Dimming logic is "is this track currently audible" (muted, OR some
+   OTHER track is soloed and this one isn't) - not literally "is muted
+   true" - so solo and mute share one visual treatment (plan 4.10). */
+.track.dimmed .ribbon, .track.dimmed .gateRibbon { opacity: 0.35; }
+
+.hint { color: #888; font-size: 13px; }
+
+.diagBox {
+  background: #14141a;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.debugLog {
+  background: #14141a;
+  padding: 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+  height: 140px;
+  overflow-y: auto;
+  color: #8a8;
+}
+
+table { border-collapse: collapse; margin-top: 8px; }
+th, td { border: 1px solid #444; padding: 4px 10px; text-align: left; font-size: 13px; }

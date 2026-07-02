@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>StepBridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<h1>StepBridge</h1>
+
+<div class="tabBar">
+  <button class="tabBtn active" data-tab="sequencer" onclick="ShowTab('sequencer')">Sequencer</button>
+  <button class="tabBtn" data-tab="userdocs" onclick="ShowTab('userdocs')">User Guide</button>
+  <button class="tabBtn" data-tab="techdocs" onclick="ShowTab('techdocs')">Technical Docs</button>
+</div>
+
+<div id="tab-sequencer" class="tabPane active">
+
+  <div class="toolbar">
+    <span id="connectedStatus">Connecting...</span>
+    <button onclick="ReacquireMidiAccess()">Reconnect</button>
+    <button onclick="RefreshAll()">Refresh</button>
+    <button id="globalLockBtn" onclick="ToggleGlobalLock()">Lock All Editing</button>
+    <button id="globalMuteBtn" onclick="ToggleGlobalMute()">Silence All</button>
+    <span class="transportGroup">
+      <button class="transportBtn" onclick="SetTransport(0)">Stop</button>
+      <button class="transportBtn" onclick="SetTransport(1)">Pause</button>
+      <button class="transportBtn active" onclick="SetTransport(2)">Play</button>
+      <span id="transportLabel">Playing</span>
+    </span>
+    <span class="clockSourceGroup">
+      Clock:
+      <button class="clockSourceBtn active" onclick="SetClockSource(0)">Internal</button>
+      <button class="clockSourceBtn" onclick="SetClockSource(1)">Ext Pulse</button>
+      <button class="clockSourceBtn" onclick="SetClockSource(2)">MIDI Clock</button>
+      <span id="clockSourceLabel">Internal</span>
+      <span id="tempoLabel" class="tempoLabel">-- BPM</span>
+    </span>
+    <span id="panelStateLabel" class="panelStateLabel">Panel: --</span>
+    <label><input type="checkbox" id="autoScrollToFocus"> Auto-scroll to focus</label>
+  </div>
+
+  <div class="toolbar patternBankRow">
+    Save to: <span id="saveSlots"></span>
+    Load from: <span id="loadSlots"></span>
+    <span id="patternBankStatus" class="patternBankStatus"></span>
+  </div>
+
+  <div class="toolbar">
+    Tracks: <span id="numTracksLabel">2</span> / <span id="maxTracksLabel">8</span>
+    <button id="addTrackBtn" onclick="AddTrackUI()">+ Add Track</button>
+    <button id="removeTrackBtn" onclick="RemoveTrackUI()">- Remove Track</button>
+  </div>
+
+  <div class="toolbar">
+    CV routing —
+    Track (Down page Y):
+    <select id="cvTrackRoute" onchange="SetCVRouting()">
+      <option value="0">Off (Y knob)</option>
+      <option value="1">CV1</option>
+      <option value="2">CV2</option>
+    </select>
+    Step (Middle page X):
+    <select id="cvStepRoute" onchange="SetCVRouting()">
+      <option value="0">Off (X knob)</option>
+      <option value="1">CV1</option>
+      <option value="2">CV2</option>
+    </select>
+  </div>
+  <div class="toolbar" id="cvCalRow" style="font-size:0.85em; gap:8px">
+    CV calibration —
+    Track: <span id="cvTrackCalLabel">uncalibrated (full range)</span>
+    <button onclick="SendSysEx(MSG_SET_CV_ROUTING_CAL,[0, 0,0, 0x7F,0x1F])" title="Reset track CV calibration to full range">Reset</button>
+    Step: <span id="cvStepCalLabel">uncalibrated (full range)</span>
+    <button onclick="SendSysEx(MSG_SET_CV_ROUTING_CAL,[1, 0,0, 0x7F,0x1F])" title="Reset step CV calibration to full range">Reset</button>
+    <span class="hint">To calibrate: set CV to minimum → note the raw CvToKnob value → set to maximum → send MSG_SET_CV_ROUTING_CAL via custom SysEx. A guided calibration UI is planned.</span>
+  </div>
+
+  <div id="tracksContainer"></div>
+
+  <p class="hint">
+    Click/drag a step to set its pitch. <b>Shift</b>=rest, <b>Ctrl/Cmd</b>=tie, <b>Alt</b>=accent (click or sweep across several steps).
+    Scroll a step to nudge pitch; <b>Shift+scroll</b> sets ratchet count (1-8). Drag/scroll the gate-length strip below each track to set how long each step's gate stays open.
+  </p>
+
+  <h3>Connection diagnostics</h3>
+  <div id="connDiag" class="diagBox"></div>
+  <div id="debugLog" class="debugLog"></div>
+
+  <h3>
+    Diagnostics event log
+    <button id="diagLogToggle" onclick="ToggleDiagLog()">Show</button>
+  </h3>
+  <div id="diagLogPanel" class="diagLogPanel" style="display:none">
+    <div class="diagLogToolbar">
+      <label><input type="checkbox" class="diagFilter" value="state" checked onchange="RenderDiagLog()"> State</label>
+      <label><input type="checkbox" class="diagFilter" value="hardware" checked onchange="RenderDiagLog()"> Hardware</label>
+      <label><input type="checkbox" class="diagFilter" value="midi" checked onchange="RenderDiagLog()"> MIDI</label>
+      <label><input type="checkbox" class="diagFilter" value="sysex" checked onchange="RenderDiagLog()"> SysEx</label>
+      <button onclick="RequestDiagEvents()">Refresh</button>
+      <button onclick="ResyncDiagLog()" title="Clears the log and refetches from the oldest still-buffered event - use if the log seems stuck or shows impossible values">Resync</button>
+      <button id="diagLogCopyBtn" onclick="CopyDiagLog()" title="Copies the currently-filtered rows as text - takes a snapshot, so it works even though the table keeps repainting">Copy</button>
+      <label><input type="checkbox" id="diagAutoSync" checked onchange="ToggleDiagAutoSync()"> Auto-sync</label>
+      <span id="diagLogSynced" class="diagLogSynced">never synced</span>
+    </div>
+    <table id="diagLogTable" class="diagLogTable">
+      <thead><tr><th>seq</th><th>time</th><th>type</th><th>detail</th></tr></thead>
+      <tbody id="diagLogBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<div id="tab-userdocs" class="tabPane">
+  <h2>User Guide</h2>
+  <p>StepBridge is a CV/Pulse/MIDI step sequencer for the Music Thing Modular Workshop Computer.</p>
+  <h3>Panel controls</h3>
+  <ul>
+    <li><b>Down (Utility)</b>: Main knob = sequence length, Y knob = track select.</li>
+    <li><b>Middle (Step Edit)</b>: Main knob = pitch of the scrubbed step (turn fully down for rest), X knob = step scrub, Y knob = track select.</li>
+    <li><b>Up (Tempo)</b>: Main knob = tempo (only while using the internal clock).</li>
+  </ul>
+  <h3>Clock</h3>
+  <p>Patch a clock signal into Pulse In 1 to sync to an external clock; leave it unpatched to use the internal tempo knob. Pulse In 2 resets all tracks to step 1.</p>
+  <p><b>Pressing Play arms the sequencer rather than guaranteeing an instant start.</b> With External Pulse or MIDI Clock selected, playback genuinely can't begin until the next real pulse/tick arrives from the external clock - there's no way to predict or control exactly when that will be relative to when you pressed Play, since the external clock keeps running on its own regardless of our transport state. This is standard behavior for any instrument that follows an external clock, not a bug: you'll see the transport label show <b>"Armed…"</b> (pulsing) until the first pulse actually arrives and playback truly starts. Once that first pulse lands, every step after it is correctly locked to the external clock's actual rate - only that first moment is variable.</p>
+  <h3>Web UI</h3>
+  <p>Click a step in the Sequencer tab to set its pitch, or click near the bottom of a step to make it a rest. Use the transport buttons to stop, pause, or play the sequencer from the browser.</p>
+</div>
+
+<div id="tab-techdocs" class="tabPane">
+  <h2>Technical Documentation</h2>
+  <p>SysEx framing: <code>0xF0, 0x7D, 0x53 (device ID), &lt;command&gt;, ...payload..., 0xF7</code></p>
+  <p>See <code>sysex_protocol.h</code> for the authoritative message ID table. Implemented so far:</p>
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Direction</th></tr>
+    <tr><td>0x01</td><td>MSG_FIRMWARE_VERSION</td><td>Firmware → Host</td></tr>
+    <tr><td>0x02</td><td>MSG_TRACK_STEPS</td><td>Firmware → Host (3 bytes/step: note, gateLenPct, flags - bit0=tied, bit1=accent, bits2-4=ratchetCount-1). Both pull-response AND now send-on-change, so panel-driven edits (length, steps, time signature) appear live without a manual Refresh.</td></tr>
+    <tr><td>0x05</td><td>MSG_PLAYHEAD</td><td>Firmware → Host (send-on-change)</td></tr>
+    <tr><td>0x07</td><td>MSG_NUM_TRACKS</td><td>Firmware → Host</td></tr>
+    <tr><td>0x08</td><td>MSG_TEMPO</td><td>Firmware → Host (send-on-change; bpmHi/bpmLo 7-bit split, measured from real step-advance timing, not a dial-in setting - see Pattern::measuredBpm)</td></tr>
+    <tr><td>0x09</td><td>MSG_CLOCK_SOURCE</td><td>Firmware → Host (send-on-change after a SET; not yet pushed when firmware auto-detects Internal/ExternalPulse on its own)</td></tr>
+    <tr><td>0x0A</td><td>MSG_TRANSPORT_STATE</td><td>Firmware → Host (send-on-change)</td></tr>
+    <tr><td>0x0C</td><td>MSG_ARMED</td><td>Firmware → Host (send-on-change; true from Play until the first real pulse/tick arrives, ExternalPulse/MidiClock only)</td></tr>
+    <tr><td>0x06</td><td>MSG_PANEL_STATE</td><td>Firmware → Host (page, selectedTrack, scrubStep) - push-only, no request; shows live panel focus in the Web UI</td></tr>
+    <tr><td>0x0B</td><td>MSG_TRACK_LIVE_STATE</td><td>Firmware → Host (track, shiftWire, muted, solo, key, scale, midiChannel, midiEnabled - send-on-change AND in response to a request)</td></tr>
+    <tr><td>0x0D</td><td>MSG_GLOBAL_MUTE</td><td>Firmware → Host (muted 0/1 - master override, send-on-change AND in response to a request)</td></tr>
+    <tr><td>0x04</td><td>MSG_SLOT_BITMAP</td><td>Firmware → Host (bitmapLow7, bitmapBit7, activeSlot 0-7 or 8=none) - send-on-change AND in response to MSG_REQUEST_SLOT_BITMAP. Bitmap split across two bytes since NUM_SAVE_SLOTS=8 needs bit 7, which would make a single byte illegal SysEx data.</td></tr>
+    <tr><td>0x10</td><td>MSG_DIAG_EVENT_BATCH</td><td>Firmware → Host (count, more 0/1, then count*(type, seq[5x7bit], timestampMs[5x7bit], arg0, arg1)) - response to MSG_REQUEST_DIAG_EVENTS. seq/timestampMs are uint32_t split into 5 7-bit-safe bytes each.</td></tr>
+    <tr><td>0x54</td><td>MSG_REQUEST_DIAG_EVENTS</td><td>Host → Firmware (sinceSeq[5x7bit]) - 0 to fetch from the oldest still-buffered event; replies MSG_DIAG_EVENT_BATCH</td></tr>
+    <tr><td>0x40</td><td>MSG_ACK</td><td>Firmware → Host</td></tr>
+    <tr><td>0x41</td><td>MSG_NACK</td><td>Firmware → Host</td></tr>
+    <tr><td>0x50</td><td>MSG_INTERFACE_VERSION</td><td>Host → Firmware</td></tr>
+    <tr><td>0x51</td><td>MSG_REQUEST_TRACK_STEPS</td><td>Host → Firmware</td></tr>
+    <tr><td>0x55</td><td>MSG_REQUEST_NUM_TRACKS</td><td>Host → Firmware</td></tr>
+    <tr><td>0x56</td><td>MSG_REQUEST_TEMPO</td><td>Host → Firmware (re-syncs current BPM on connect/reload, since MSG_TEMPO is otherwise send-on-change only)</td></tr>
+    <tr><td>0x57</td><td>MSG_REQUEST_CLOCK_SOURCE</td><td>Host → Firmware (same reasoning as above)</td></tr>
+    <tr><td>0x58</td><td>MSG_REQUEST_TRACK_LIVE_STATE</td><td>Host → Firmware (track) - same reasoning, covers shift/mute/solo</td></tr>
+    <tr><td>0x59</td><td>MSG_REQUEST_GLOBAL_MUTE</td><td>Host → Firmware (none)</td></tr>
+    <tr><td>0x60</td><td>MSG_SET_STEP</td><td>Host → Firmware</td></tr>
+    <tr><td>0x61</td><td>MSG_SET_STEP_GATE</td><td>Host → Firmware (gateLenPct 1-100)</td></tr>
+    <tr><td>0x62</td><td>MSG_SET_STEP_TIE</td><td>Host → Firmware (clears ratchet to 1 if set)</td></tr>
+    <tr><td>0x6C</td><td>MSG_SET_STEP_ACCENT</td><td>Host → Firmware</td></tr>
+    <tr><td>0x6D</td><td>MSG_SET_STEP_RATCHET</td><td>Host → Firmware (1-8, clears tie if set)</td></tr>
+    <tr><td>0x6E</td><td>MSG_SNAP_TO_SCALE</td><td>Host → Firmware (key 0-11, scale 0-3 - destructive, one-shot)</td></tr>
+    <tr><td>0x6F</td><td>MSG_PREVIEW_NOTE</td><td>Host → Firmware (track, note) - fire-and-forget audition; sends MIDI and (for CV tracks) briefly pulses real CV/Pulse - can glitch live output, accepted tradeoff</td></tr>
+    <tr><td>0x76</td><td>MSG_SET_TRACK_SHIFT</td><td>Host → Firmware (wire = shift+64, shift -24..+24 - Live Shift, non-destructive)</td></tr>
+    <tr><td>0x77</td><td>MSG_SET_TRACK_MUTE</td><td>Host → Firmware (track, muted 0/1)</td></tr>
+    <tr><td>0x78</td><td>MSG_SET_TRACK_SOLO</td><td>Host → Firmware (track, solo 0/1)</td></tr>
+    <tr><td>0x65</td><td>MSG_SET_MIDI_CHANNEL</td><td>Host → Firmware (track, channel 1-16)</td></tr>
+    <tr><td>0x66</td><td>MSG_SET_MIDI_ENABLED</td><td>Host → Firmware (track, enabled 0/1)</td></tr>
+    <tr><td>0x67</td><td>MSG_ADD_TRACK</td><td>Host → Firmware (none) - appends one MIDI-only track (NACK if at MAX_TRACKS); replies MSG_NUM_TRACKS</td></tr>
+    <tr><td>0x68</td><td>MSG_REMOVE_TRACK</td><td>Host → Firmware (none) - removes the highest-index track (NACK if at NUM_CV_TRACKS); replies MSG_NUM_TRACKS</td></tr>
+    <tr><td>0x7B</td><td>MSG_SET_DRAW_SCALE</td><td>Host → Firmware (track, key 0-11, scale 0-3) - panel pitch knob snaps to this too, not just mouse-drawn pitches</td></tr>
+    <tr><td>0x71</td><td>MSG_RANDOMIZE</td><td>Host → Firmware (track) - generates a new melodic pattern; updated steps arrive via MSG_TRACK_STEPS push</td></tr>
+    <tr><td>0x72</td><td>MSG_UNDO_RANDOMIZE</td><td>Host → Firmware (track) - restores the one-level pre-randomize snapshot; NACK if none pending</td></tr>
+    <tr><td>0x53</td><td>MSG_REQUEST_SLOT_BITMAP</td><td>Host → Firmware (none)</td></tr>
+    <tr><td>0x69</td><td>MSG_SAVE_SLOT</td><td>Host → Firmware (slot 0-7) - saves the first FlashStore::NUM_SAVE_TRACKS (2) tracks; replies MSG_SLOT_BITMAP</td></tr>
+    <tr><td>0x6A</td><td>MSG_LOAD_SLOT</td><td>Host → Firmware (slot 0-7) - loads into those tracks; NACK if slot empty; replies MSG_SLOT_BITMAP</td></tr>
+    <tr><td>0x7A</td><td>MSG_SET_GLOBAL_MUTE</td><td>Host → Firmware (muted 0/1) - overrides every track's mute/solo, panic/safety control</td></tr>
+    <tr><td>0x79</td><td>MSG_TRANSPOSE_NOTES</td><td>Host → Firmware (wire = semitones+64 - destructive, one-shot)</td></tr>
+    <tr><td>0x63</td><td>MSG_SET_LENGTH</td><td>Host → Firmware (1-64, triggers replicate-last-step growth rule)</td></tr>
+    <tr><td>0x64</td><td>MSG_SET_TIMESIG</td><td>Host → Firmware (timeSigNum 1-32, also sets mode=Regular)</td></tr>
+    <tr><td>0x70</td><td>MSG_SET_TIMESIG_IRREGULAR</td><td>Host → Firmware (groupCount 1-8, groups[] 1-32 each, also sets mode=Irregular)</td></tr>
+    <tr><td>0x74</td><td>MSG_SET_CLOCK_SOURCE</td><td>Host → Firmware (0=Internal, 1=ExternalPulse, 2=MidiClock)</td></tr>
+    <tr><td>0x75</td><td>MSG_SET_TRANSPORT</td><td>Host → Firmware</td></tr>
+  </table>
+  <p>Pull model: every request gets either a data response or an explicit NACK; a request with no reply within 750ms is logged as a timeout in the connection diagnostics panel. <code>MSG_PLAYHEAD</code> is the only unprompted broadcast, sent only when the playhead actually changes.</p>
+  <p><em>Note: every SysEx data byte, including the command byte, must be 0-127. Host→Firmware IDs were originally specced at 0x60-0x89 and renumbered to 0x50-0x79 after this was caught during milestone-3 hardware testing (0x85 is 133, an illegal MIDI status byte value).</em></p>
+  <p><em>MIDI Clock: firmware honors incoming realtime Start(0xFA)/Continue(0xFB)/Stop(0xFC) as transport commands and 0xF8 (24 PPQN) for step timing, but only once MIDI Clock is the explicitly selected source - it never overrides Internal/ExternalPulse on its own. Selecting MIDI Clock from the Web UI is sticky until explicitly changed back; patching/unpatching Pulse In 1 does not affect it.</em></p>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

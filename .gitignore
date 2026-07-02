@@ -1,0 +1,13 @@
+# CMake build directories (anywhere in the tree)
+**/build/
+**/build-*/
+
+# Pico SDK symlinks created by cmake
+pico-sdk/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/settings.json
