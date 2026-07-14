@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>StepBridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<h1>StepBridge</h1>
+
+<div class="tabBar">
+  <button class="tabBtn active" data-tab="sequencer" onclick="ShowTab('sequencer')">Sequencer</button>
+  <button class="tabBtn" data-tab="system" onclick="ShowTab('system')">System</button>
+  <button class="tabBtn" data-tab="userdocs" onclick="ShowTab('userdocs')">User Guide</button>
+  <button class="tabBtn" data-tab="techdocs" onclick="ShowTab('techdocs')">Technical Docs</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SEQUENCER TAB                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-sequencer" class="tabPane active">
+
+  <div class="toolbar">
+    <span id="connectedStatus">Connecting...</span>
+    <button onclick="ReacquireMidiAccess()">Reconnect</button>
+    <button onclick="RefreshAll()">Refresh</button>
+    <button id="globalLockBtn" onclick="ToggleGlobalLock()">Lock All Editing</button>
+    <button id="globalMuteBtn" onclick="ToggleGlobalMute()">Silence All</button>
+    <span class="transportGroup">
+      <button class="transportBtn" onclick="SetTransport(0)">Stop</button>
+      <button class="transportBtn" onclick="SetTransport(1)">Pause</button>
+      <button class="transportBtn active" onclick="SetTransport(2)">Play</button>
+      <span id="transportLabel">Playing</span>
+    </span>
+    <span class="clockSourceGroup">
+      Clock:
+      <button class="clockSourceBtn active" onclick="SetClockSource(0)">Internal</button>
+      <button class="clockSourceBtn" onclick="SetClockSource(1)">Ext Pulse</button>
+      <button class="clockSourceBtn" onclick="SetClockSource(2)">MIDI Clock</button>
+      <span id="clockSourceLabel">Internal</span>
+      <span id="tempoLabel" class="tempoLabel">-- BPM</span>
+    </span>
+    <span id="panelStateLabel" class="panelStateLabel">Panel: --</span>
+    <label><input type="checkbox" id="autoScrollToFocus"> Auto-scroll to focus</label>
+  </div>
+
+  <div class="toolbar patternBankRow">
+    Save to: <span id="saveSlots"></span>
+    Load from: <span id="loadSlots"></span>
+    <span id="patternBankStatus" class="patternBankStatus"></span>
+  </div>
+
+  <div class="toolbar">
+    Tracks: <span id="numTracksLabel">2</span> / <span id="maxTracksLabel">4</span>
+    <button id="addTrackBtn" onclick="AddTrackUI()">+ Add Track</button>
+    <button id="removeTrackBtn" onclick="RemoveTrackUI()">- Remove Track</button>
+    <span style="font-size:0.85em; color:#888">CV routing &amp; calibration → <a href="#" onclick="ShowTab('system');return false;">System tab</a></span>
+  </div>
+
+  <div id="tracksContainer"></div>
+
+  <p class="hint">
+    Click/drag a step to set its pitch. <b>Shift</b>=rest, <b>Ctrl/Cmd</b>=tie, <b>Alt</b>=accent (click or sweep across several steps).
+    Scroll a step to nudge pitch; <b>Shift+scroll</b> sets ratchet count (1-8). Drag/scroll the gate-length strip below each track to set how long each step's gate stays open.
+  </p>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SYSTEM TAB                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-system" class="tabPane">
+
+  <h2>System</h2>
+
+  <h3>CV Routing</h3>
+  <p class="hint">Route an external CV (e.g. from an attenuverter) to control track or step selection instead of the Y/X knobs. Calibrate after routing so the full usable voltage range maps to the full track/step range.</p>
+  <div class="toolbar">
+    Track (Down page Y):
+    <select id="cvTrackRoute" onchange="SetCVRouting()">
+      <option value="0">Off (Y knob)</option>
+      <option value="1">CV1</option>
+      <option value="2">CV2</option>
+    </select>
+    Step (Middle page X):
+    <select id="cvStepRoute" onchange="SetCVRouting()">
+      <option value="0">Off (X knob)</option>
+      <option value="1">CV1</option>
+      <option value="2">CV2</option>
+    </select>
+  </div>
+
+  <h3>CV Calibration</h3>
+  <p class="hint">Set your CV to its minimum voltage, click Set Min. Then set it to maximum, click Set Max. Both endpoints must be set before calibration applies.</p>
+  <div class="toolbar" id="cvCalRow" style="font-size:0.85em; gap:8px">
+    Track:
+    <button onclick="CaptureCalPoint(0,0)" title="Set CV to minimum position then click">Set Min</button>
+    <button onclick="CaptureCalPoint(0,1)" title="Set CV to maximum position then click">Set Max</button>
+    <span id="cvTrackCalLabel">uncalibrated (full range)</span>
+    <button onclick="ResetCVCal(0)" title="Reset track CV calibration to full range">Reset</button>
+    &nbsp; Step:
+    <button onclick="CaptureCalPoint(1,0)" title="Set CV to minimum position then click">Set Min</button>
+    <button onclick="CaptureCalPoint(1,1)" title="Set CV to maximum position then click">Set Max</button>
+    <span id="cvStepCalLabel">uncalibrated (full range)</span>
+    <button onclick="ResetCVCal(1)" title="Reset step CV calibration to full range">Reset</button>
+  </div>
+  <p class="hint" style="color:#888">CV routing and calibration are now saved to flash automatically — they survive power cycles and reflashes without needing to re-calibrate.</p>
+
+  <h3>Hardware diagnostics</h3>
+  <p class="hint">Freeze hardware to silence all knob/CV input while testing from the Web UI. Stream knob values to see raw and filtered ADC readings for all four knobs and both CV inputs at ~10 Hz.</p>
+  <div class="toolbar" style="font-size:0.85em; gap:8px; flex-wrap:wrap">
+    <button id="freezeBtn" onclick="TogglePanelFreeze()" title="Stop hardware knobs/CV from changing pattern state (still reads and streams values)">Freeze hardware</button>
+    <button id="streamBtn" onclick="ToggleKnobStream()" title="Stream raw and filtered ADC values for all knobs and CV inputs at ~10Hz">Stream knob values</button>
+  </div>
+  <div id="knobDebugRow" style="display:none; font-family:monospace; font-size:0.8em; padding:4px 8px; background:#1a1a1a; color:#8f8; border-bottom:1px solid #333">
+    <span id="knobDebugValues">waiting for data…</span>
+  </div>
+
+  <h3>Connection diagnostics</h3>
+  <div id="connDiag" class="diagBox"></div>
+  <div id="debugLog" class="debugLog"></div>
+
+  <h3>
+    Diagnostics event log
+    <button id="diagLogToggle" onclick="ToggleDiagLog()">Show</button>
+  </h3>
+  <div id="diagLogPanel" class="diagLogPanel" style="display:none">
+    <div class="diagLogToolbar">
+      <label><input type="checkbox" class="diagFilter" value="state" checked onchange="RenderDiagLog()"> State</label>
+      <label><input type="checkbox" class="diagFilter" value="hardware" checked onchange="RenderDiagLog()"> Hardware</label>
+      <label><input type="checkbox" class="diagFilter" value="midi" checked onchange="RenderDiagLog()"> MIDI</label>
+      <label><input type="checkbox" class="diagFilter" value="sysex" checked onchange="RenderDiagLog()"> SysEx</label>
+      <button onclick="RequestDiagEvents()">Refresh</button>
+      <button onclick="ResyncDiagLog()" title="Clears the log and refetches from the oldest still-buffered event - use if the log seems stuck or shows impossible values">Resync</button>
+      <button id="diagLogCopyBtn" onclick="CopyDiagLog()" title="Copies the currently-filtered rows as text - takes a snapshot, so it works even though the table keeps repainting">Copy</button>
+      <label><input type="checkbox" id="diagAutoSync" checked onchange="ToggleDiagAutoSync()"> Auto-sync</label>
+      <span id="diagLogSynced" class="diagLogSynced">never synced</span>
+    </div>
+    <table id="diagLogTable" class="diagLogTable">
+      <thead><tr><th>seq</th><th>time</th><th>type</th><th>detail</th></tr></thead>
+      <tbody id="diagLogBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- USER GUIDE TAB                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-userdocs" class="tabPane">
+  <h2>User Guide</h2>
+  <p>StepBridge is a CV/Pulse/MIDI step sequencer for the Music Thing Modular Workshop Computer.</p>
+
+  <h3>Panel controls</h3>
+  <ul>
+    <li><b>Down (Utility)</b>: Main knob = sequence length, Y knob = track select.</li>
+    <li><b>Middle (Step Edit)</b>: Main knob = pitch of the scrubbed step (turn fully down for rest), X knob = step scrub, Y knob = gate length of the current step.</li>
+    <li><b>Up (Tempo/Bank)</b>: Main knob = tempo (only while using the internal clock), X = slot select, Y = save/load trigger.</li>
+  </ul>
+
+  <h3>Clock</h3>
+  <p>Patch a clock signal into Pulse In 1 to sync to an external clock; leave it unpatched to use the internal tempo knob. Pulse In 2 resets all tracks to step 1.</p>
+  <p><b>Pressing Play arms the sequencer rather than guaranteeing an instant start.</b> With External Pulse or MIDI Clock selected, playback genuinely can't begin until the next real pulse/tick arrives from the external clock — this is standard external-clock behavior, not a bug. You'll see <b>"Armed…"</b> (pulsing) until the first pulse actually arrives.</p>
+
+  <h3>Web UI</h3>
+  <p>Click a step in the Sequencer tab to set its pitch, or click near the bottom of a step to make it a rest. Use the transport buttons to stop, pause, or play the sequencer from the browser.</p>
+  <p>CV routing and calibration live in the <b>System tab</b> and are now saved to flash — they survive power cycles and reflashes.</p>
+
+  <h3>Track limit: 4 tracks maximum</h3>
+  <p>StepBridge is hard-capped at 4 tracks. This is a confirmed hardware constraint of the RP2040 Workshop Computer, found through testing during development:</p>
+  <ul>
+    <li>The four panel knobs (Main, X, Y, Switch) share a single RP2040 ADC channel through a 2-bit hardware multiplexer, cycling at 48 kHz (12 kHz per knob).</li>
+    <li>At 5+ tracks, knob telemetry becomes completely unstable — all four knob readings jitter simultaneously, knobs become unresponsive, and the state persists even after removing tracks. At 4 tracks, everything is rock solid.</li>
+    <li>Crucially, <b>CV1 and CV2 also become unresponsive at 5+ tracks</b>, not just the mux-shared panel knobs. This rules out ADC mux crosstalk as the root cause — the failure is systemic, affecting all ADC inputs simultaneously.</li>
+    <li>The most likely cause is USB/ADC interrupt contention: the MSG_TRACK_STEPS burst for a new 5th track (~211 bytes) may disrupt the 48 kHz ComputerCard ISR's ADC sampling timing badly enough that the entire ADC subsystem stops producing valid readings. The failure being permanent until power-cycle suggests corrupted ISR/DMA state rather than simple timing jitter.</li>
+  </ul>
+
+  <h3>Challenge: can you push past 4 tracks?</h3>
+  <p>If you're a developer and want to investigate the 5-track instability, here's what we know:</p>
+  <ul>
+    <li>The instability appears immediately when the 5th track is added via <code>MSG_ADD_TRACK</code>, before any knob is touched — suggesting it's triggered by the USB burst (MSG_TRACK_STEPS + MSG_NUM_TRACKS) rather than an audio-path timing issue.</li>
+    <li>Increasing the MIDI TX buffer from 64 to 512 bytes (<code>CFG_TUD_MIDI_TX_BUFSIZE</code> in <code>tusb_config.h</code>) eliminated the SysEx frame corruption at 5 tracks but did not fix the knob instability.</li>
+    <li>The 4-track limit holds even after a power cycle — the instability isn't a transient USB state issue. Removing tracks from 5 back to 4 does not recover stability; a full power cycle is required.</li>
+    <li>Potential avenues: rate-limiting or chunking <code>MSG_TRACK_STEPS</code> sends on add (spread the burst over multiple <code>tud_task()</code> iterations), investigating whether TinyUSB's interrupt handler on core0 can preempt the ComputerCard ADC ISR on core1 long enough to corrupt DMA/ADC state, or checking whether the RP2040's ADC DMA channel is sharing an IRQ with the USB stack.</li>
+  </ul>
+  <p>Contributions welcome — this is an open hardware/firmware project. The source is in the <code>stepbridge/</code> directory of the Workshop Computer repository.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TECHNICAL DOCS TAB                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-techdocs" class="tabPane">
+  <h2>Technical Documentation</h2>
+  <p>SysEx framing: <code>0xF0, 0x7D, 0x53 (device ID), &lt;command&gt;, ...payload..., 0xF7</code></p>
+  <p>See <code>sysex_protocol.h</code> for the authoritative message ID table. Implemented so far:</p>
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Direction</th></tr>
+    <tr><td>0x01</td><td>MSG_FIRMWARE_VERSION</td><td>Firmware → Host</td></tr>
+    <tr><td>0x02</td><td>MSG_TRACK_STEPS</td><td>Firmware → Host (3 bytes/step: note, gateLenPct, flags - bit0=tied, bit1=accent, bits2-4=ratchetCount-1). Both pull-response AND send-on-change, so panel-driven edits appear live without a manual Refresh.</td></tr>
+    <tr><td>0x05</td><td>MSG_PLAYHEAD</td><td>Firmware → Host (send-on-change)</td></tr>
+    <tr><td>0x07</td><td>MSG_NUM_TRACKS</td><td>Firmware → Host</td></tr>
+    <tr><td>0x08</td><td>MSG_TEMPO</td><td>Firmware → Host (send-on-change; bpmHi/bpmLo 7-bit split, measured from real step-advance timing)</td></tr>
+    <tr><td>0x09</td><td>MSG_CLOCK_SOURCE</td><td>Firmware → Host (send-on-change)</td></tr>
+    <tr><td>0x0A</td><td>MSG_TRANSPORT_STATE</td><td>Firmware → Host (send-on-change)</td></tr>
+    <tr><td>0x0C</td><td>MSG_ARMED</td><td>Firmware → Host (send-on-change; true from Play until the first real pulse/tick arrives, ExternalPulse/MidiClock only)</td></tr>
+    <tr><td>0x06</td><td>MSG_PANEL_STATE</td><td>Firmware → Host (page, selectedTrack, scrubStep) - push-only; shows live panel focus in the Web UI</td></tr>
+    <tr><td>0x0B</td><td>MSG_TRACK_LIVE_STATE</td><td>Firmware → Host (track, shiftWire, muted, solo, key, scale, midiChannel, midiEnabled - send-on-change AND in response to a request)</td></tr>
+    <tr><td>0x0D</td><td>MSG_GLOBAL_MUTE</td><td>Firmware → Host (muted 0/1 - master override)</td></tr>
+    <tr><td>0x04</td><td>MSG_SLOT_BITMAP</td><td>Firmware → Host (bitmapLow7, bitmapBit7, activeSlot 0-7 or 8=none)</td></tr>
+    <tr><td>0x0E</td><td>MSG_CV_ROUTING_STATE</td><td>Firmware → Host (trackRoute, stepRoute, trackCalMin_lo/hi, trackCalMax_lo/hi, stepCalMin_lo/hi, stepCalMax_lo/hi)</td></tr>
+    <tr><td>0x0F</td><td>MSG_CV_READING</td><td>Firmware → Host (rawCV0_lo/hi, rawCV1_lo/hi) - response to MSG_REQUEST_CV_READING for calibration capture</td></tr>
+    <tr><td>0x10</td><td>MSG_DIAG_EVENT_BATCH</td><td>Firmware → Host - response to MSG_REQUEST_DIAG_EVENTS</td></tr>
+    <tr><td>0x11</td><td>MSG_KNOB_READINGS</td><td>Firmware → Host (rawY, filtY, rawX, filtX, rawCV0, filtCV0, rawCV1, filtCV1 - 8 values × 2 7-bit bytes) - streaming at ~10 Hz when enabled via MSG_SET_KNOB_STREAM</td></tr>
+    <tr><td>0x40</td><td>MSG_ACK</td><td>Firmware → Host</td></tr>
+    <tr><td>0x41</td><td>MSG_NACK</td><td>Firmware → Host</td></tr>
+    <tr><td>0x50</td><td>MSG_INTERFACE_VERSION</td><td>Host → Firmware</td></tr>
+    <tr><td>0x51</td><td>MSG_REQUEST_TRACK_STEPS</td><td>Host → Firmware</td></tr>
+    <tr><td>0x53</td><td>MSG_REQUEST_SLOT_BITMAP</td><td>Host → Firmware</td></tr>
+    <tr><td>0x54</td><td>MSG_REQUEST_DIAG_EVENTS</td><td>Host → Firmware (sinceSeq[5x7bit])</td></tr>
+    <tr><td>0x55</td><td>MSG_REQUEST_NUM_TRACKS</td><td>Host → Firmware</td></tr>
+    <tr><td>0x56</td><td>MSG_REQUEST_TEMPO</td><td>Host → Firmware</td></tr>
+    <tr><td>0x57</td><td>MSG_REQUEST_CLOCK_SOURCE</td><td>Host → Firmware</td></tr>
+    <tr><td>0x58</td><td>MSG_REQUEST_TRACK_LIVE_STATE</td><td>Host → Firmware (track)</td></tr>
+    <tr><td>0x59</td><td>MSG_REQUEST_GLOBAL_MUTE</td><td>Host → Firmware</td></tr>
+    <tr><td>0x5B</td><td>MSG_REQUEST_CV_ROUTING</td><td>Host → Firmware</td></tr>
+    <tr><td>0x5C</td><td>MSG_REQUEST_CV_READING</td><td>Host → Firmware - triggers a raw ADC snapshot for calibration</td></tr>
+    <tr><td>0x5D</td><td>MSG_SET_PANEL_FREEZE</td><td>Host → Firmware (frozen 0/1) - silences hardware controls without disconnecting</td></tr>
+    <tr><td>0x5E</td><td>MSG_SET_KNOB_STREAM</td><td>Host → Firmware (enabled 0/1) - enables/disables MSG_KNOB_READINGS stream</td></tr>
+    <tr><td>0x60</td><td>MSG_SET_STEP</td><td>Host → Firmware</td></tr>
+    <tr><td>0x61</td><td>MSG_SET_STEP_GATE</td><td>Host → Firmware (gateLenPct 1-100)</td></tr>
+    <tr><td>0x62</td><td>MSG_SET_STEP_TIE</td><td>Host → Firmware (clears ratchet to 1 if set)</td></tr>
+    <tr><td>0x63</td><td>MSG_SET_LENGTH</td><td>Host → Firmware (1-64, triggers replicate-last-step growth rule)</td></tr>
+    <tr><td>0x64</td><td>MSG_SET_TIMESIG</td><td>Host → Firmware (timeSigNum 1-32, also sets mode=Regular)</td></tr>
+    <tr><td>0x65</td><td>MSG_SET_MIDI_CHANNEL</td><td>Host → Firmware (track, channel 1-16)</td></tr>
+    <tr><td>0x66</td><td>MSG_SET_MIDI_ENABLED</td><td>Host → Firmware (track, enabled 0/1)</td></tr>
+    <tr><td>0x67</td><td>MSG_ADD_TRACK</td><td>Host → Firmware (none) - NACKs if at MAX_PLAYABLE_TRACKS (4); replies MSG_NUM_TRACKS</td></tr>
+    <tr><td>0x68</td><td>MSG_REMOVE_TRACK</td><td>Host → Firmware (none) - NACKs if at NUM_CV_TRACKS (2); replies MSG_NUM_TRACKS</td></tr>
+    <tr><td>0x69</td><td>MSG_SAVE_SLOT</td><td>Host → Firmware (slot 0-7) - saves the first FlashStore::NUM_SAVE_TRACKS (2) tracks plus device-wide CV routing/cal; replies MSG_SLOT_BITMAP</td></tr>
+    <tr><td>0x6A</td><td>MSG_LOAD_SLOT</td><td>Host → Firmware (slot 0-7) - loads into those tracks; NACK if slot empty; replies MSG_SLOT_BITMAP</td></tr>
+    <tr><td>0x6C</td><td>MSG_SET_STEP_ACCENT</td><td>Host → Firmware</td></tr>
+    <tr><td>0x6D</td><td>MSG_SET_STEP_RATCHET</td><td>Host → Firmware (1-8, clears tie if set)</td></tr>
+    <tr><td>0x6E</td><td>MSG_SNAP_TO_SCALE</td><td>Host → Firmware (key 0-11, scale 0-3 - destructive, one-shot)</td></tr>
+    <tr><td>0x6F</td><td>MSG_PREVIEW_NOTE</td><td>Host → Firmware (track, note) - fire-and-forget audition</td></tr>
+    <tr><td>0x70</td><td>MSG_SET_TIMESIG_IRREGULAR</td><td>Host → Firmware (groupCount 1-8, groups[] 1-32 each)</td></tr>
+    <tr><td>0x71</td><td>MSG_RANDOMIZE</td><td>Host → Firmware (track) - generates a new melodic pattern</td></tr>
+    <tr><td>0x72</td><td>MSG_UNDO_RANDOMIZE</td><td>Host → Firmware (track)</td></tr>
+    <tr><td>0x74</td><td>MSG_SET_CLOCK_SOURCE</td><td>Host → Firmware (0=Internal, 1=ExternalPulse, 2=MidiClock)</td></tr>
+    <tr><td>0x75</td><td>MSG_SET_TRANSPORT</td><td>Host → Firmware</td></tr>
+    <tr><td>0x76</td><td>MSG_SET_TRACK_SHIFT</td><td>Host → Firmware (wire = shift+64, shift -24..+24)</td></tr>
+    <tr><td>0x77</td><td>MSG_SET_TRACK_MUTE</td><td>Host → Firmware (track, muted 0/1)</td></tr>
+    <tr><td>0x78</td><td>MSG_SET_TRACK_SOLO</td><td>Host → Firmware (track, solo 0/1)</td></tr>
+    <tr><td>0x79</td><td>MSG_TRANSPOSE_NOTES</td><td>Host → Firmware (wire = semitones+64 - destructive, one-shot)</td></tr>
+    <tr><td>0x7A</td><td>MSG_SET_GLOBAL_MUTE</td><td>Host → Firmware (muted 0/1)</td></tr>
+    <tr><td>0x7B</td><td>MSG_SET_DRAW_SCALE</td><td>Host → Firmware (track, key 0-11, scale 0-3)</td></tr>
+    <tr><td>0x7C</td><td>MSG_SET_CV_ROUTING</td><td>Host → Firmware (trackRoute 0-2, stepRoute 0-2) - auto-saved to flash</td></tr>
+    <tr><td>0x7D</td><td>MSG_SET_CV_ROUTING_CAL</td><td>Host → Firmware (which 0-1, calMin_lo/hi, calMax_lo/hi) - auto-saved to flash</td></tr>
+  </table>
+  <p>Pull model: every request gets either a data response or an explicit NACK; a request with no reply within 750ms is logged as a timeout. <code>MSG_PLAYHEAD</code> is the only unprompted broadcast.</p>
+  <p><em>Note: every SysEx data byte, including the command byte, must be 0-127. Host→Firmware IDs were originally specced at 0x60-0x89 and renumbered to 0x50-0x79 after this was caught during milestone-3 hardware testing (0x85 is 133, an illegal MIDI status byte value).</em></p>
+  <p><em>MIDI Clock: firmware honors incoming realtime Start(0xFA)/Continue(0xFB)/Stop(0xFC) as transport commands and 0xF8 (24 PPQN) for step timing, but only once MIDI Clock is the explicitly selected source.</em></p>
+  <p><em>CV routing and calibration are persisted to flash automatically (no slot save needed). The FlashStore magic number was bumped to 0x42535054 when these fields were added — old saves were invalidated.</em></p>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

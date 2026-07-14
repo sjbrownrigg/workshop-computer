@@ -123,7 +123,7 @@ const MSG_SET_MIDI_CHANNEL = 0x65;
 const MSG_SET_MIDI_ENABLED = 0x66;
 const MSG_ADD_TRACK = 0x67;
 const MSG_REMOVE_TRACK = 0x68;
-const MAX_TRACKS = 8;
+const MAX_TRACKS = 4; // hardware limit: knob telemetry unstable at 5+ tracks (see System tab)
 const NUM_CV_TRACKS = 2; // tracks 0/1 are structural CV+Pulse, never removable
 const MSG_GLOBAL_MUTE = 0x0D;
 const MSG_REQUEST_GLOBAL_MUTE = 0x59;
@@ -131,7 +131,12 @@ const MSG_SET_GLOBAL_MUTE = 0x7A;
 const MSG_SET_CV_ROUTING = 0x7C;
 const MSG_SET_CV_ROUTING_CAL = 0x7D;
 const MSG_CV_ROUTING_STATE = 0x0E;
+const MSG_CV_READING = 0x0F;
 const MSG_REQUEST_CV_ROUTING = 0x5B;
+const MSG_REQUEST_CV_READING = 0x5C;
+const MSG_SET_PANEL_FREEZE = 0x5D;
+const MSG_SET_KNOB_STREAM = 0x5E;
+const MSG_KNOB_READINGS = 0x11;
 
 const SCALE_NAMES = ['Major', 'Natural Minor', 'Pentatonic', 'Chromatic'];
 const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -523,6 +528,42 @@ function ProcessIncomingSysEx(data) {
         payload[8] | (payload[9] << 7)   // stepCalMax
       );
       break;
+    case MSG_CV_READING: {
+      // Response to MSG_REQUEST_CV_READING: raw CvToKnob snapshot for CV1 (ch0) and CV2 (ch1).
+      // If a calibration capture is pending, extract the right channel and apply it.
+      if (!cvCalPending) break;
+      const { which, point } = cvCalPending;
+      cvCalPending = null;
+      const route = which === 0 ? cvTrackRoute : cvStepRoute;
+      if (route === 0) {
+        DebugLog(`CV cal: no CV route set for ${which === 0 ? 'track' : 'step'} — select CV1 or CV2 first`);
+        break;
+      }
+      const chIdx = route - 1; // 0=CV1, 1=CV2
+      const captured = payload[chIdx * 2] | (payload[chIdx * 2 + 1] << 7);
+      if (point === 0) {
+        if (which === 0) cvCalCapture.trackMin = captured; else cvCalCapture.stepMin = captured;
+      } else {
+        if (which === 0) cvCalCapture.trackMax = captured; else cvCalCapture.stepMax = captured;
+      }
+      const label = which === 0 ? 'track' : 'step';
+      const pname = point === 0 ? 'min' : 'max';
+      DebugLog(`CV cal: ${label} ${pname} captured = ${captured}`);
+      // Auto-apply once both endpoints are set
+      const min = which === 0 ? cvCalCapture.trackMin : cvCalCapture.stepMin;
+      const max = which === 0 ? cvCalCapture.trackMax : cvCalCapture.stepMax;
+      if (min !== null && max !== null) ApplyCVCal(which);
+      break;
+    }
+    case MSG_KNOB_READINGS: {
+      // Stream from MSG_SET_KNOB_STREAM: 8 values × 2 7-bit bytes each
+      // Order: rawY, filtY, rawX, filtX, rawCV0, filtCV0, rawCV1, filtCV1
+      if (payload.length < 16) break;
+      const kv = [];
+      for (let i = 0; i < 8; i++) kv.push(payload[i*2] | (payload[i*2+1] << 7));
+      RenderKnobDebug(kv[0], kv[1], kv[2], kv[3], kv[4], kv[5], kv[6], kv[7]);
+      break;
+    }
     case MSG_SLOT_BITMAP:
       NoteResponseReceived(MSG_REQUEST_SLOT_BITMAP);
       slotBitmap = payload[0] | (payload[1] << 7);
@@ -712,6 +753,7 @@ function RenderTrack(trackIndex) {
 
     const isPanelFocus = panelPage === 1 && trackIndex === panelSelectedTrack && i === panelScrubStep;
     const cell = document.createElement('div');
+    cell.id = `s-${trackIndex}-${i}`;
     cell.className = 'step' + (isRest ? ' rest' : '') + (step.tied ? ' tied' : '') + (step.accent ? ' accent' : '') + (isPanelFocus ? ' panelFocus' : '');
     if (!isRest) {
       const bar = document.createElement('div');
@@ -770,12 +812,8 @@ function RenderTrack(trackIndex) {
 // firmware's actual mode only changes when you edit the matching input.
 // Live panel-focus display: shows which page/track/step is currently
 // selected on the physical panel, and (re-)renders whichever track(s)
-// need their focus border updated - both the newly-focused track and
-// whichever one held focus before, since focus can move between tracks
-// or off the Middle page entirely (RenderTrack recomputes the border
-// fresh each call from current panelPage/panelSelectedTrack/panelScrubStep,
-// so re-rendering the old track correctly makes its border disappear too).
 let lastPanelFocusTrack = -1;
+let lastPanelScrubStep = -1;
 
 function RenderPanelState() {
   const el = document.getElementById('panelStateLabel');
@@ -784,30 +822,39 @@ function RenderPanelState() {
     const stepPart = panelPage === 1 ? ` · Step ${panelScrubStep + 1}` : '';
     el.textContent = `Panel: ${pageName} · Track ${panelSelectedTrack + 1}${stepPart}`;
   }
-  if (tracks[panelSelectedTrack]) RenderTrack(panelSelectedTrack);
-  // Only scroll on an actual track-focus CHANGE, not every render (this
-  // function also fires on scrub-step changes within the same track,
-  // which shouldn't yank the page around) - and only on Down/Middle,
-  // since Up doesn't use Y for track-select (see the loop below). Opt-in
-  // (checkbox defaults unchecked) - found via a user report that it could
-  // scroll the panel-state label itself off-screen, awkward while actively
-  // troubleshooting panel behavior and watching that label.
-  if (lastPanelFocusTrack !== panelSelectedTrack && panelPage !== 2 && document.getElementById('autoScrollToFocus')?.checked) {
-    document.getElementById(`trackBlock-${panelSelectedTrack}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-  if (lastPanelFocusTrack !== -1 && lastPanelFocusTrack !== panelSelectedTrack && tracks[lastPanelFocusTrack]) {
-    RenderTrack(lastPanelFocusTrack);
-  }
-  lastPanelFocusTrack = panelSelectedTrack;
 
-  // Whole-track border+glow, on top of the per-step dashed focus border -
-  // visible at a glance/from a distance (e.g. standing at a synth across
-  // the room), not just up close on the exact scrubbed step. Up page
-  // doesn't currently use Y for track-select (reserved), so the
-  // highlight is hidden there rather than showing a stale/irrelevant track.
-  for (let t = 0; t < numTracks; t++) {
-    const trackDiv = document.getElementById(`track-${t}`)?.closest('.track');
-    if (trackDiv) trackDiv.classList.toggle('panelFocusTrack', panelPage !== 2 && t === panelSelectedTrack);
+  // Toggle panelFocus on exactly two cells: the old scrub step (remove) and
+  // the new one (add). Avoids the full innerHTML teardown+rebuild that
+  // RenderTrack() does, which was O(track.length) DOM ops on every panel
+  // state message — very expensive at high track counts or fast scrubbing.
+  const prevCell = document.getElementById(`s-${lastPanelFocusTrack}-${lastPanelScrubStep}`);
+  if (prevCell) prevCell.classList.remove('panelFocus');
+  if (panelPage === 1) {
+    const newCell = document.getElementById(`s-${panelSelectedTrack}-${panelScrubStep}`);
+    if (newCell) newCell.classList.add('panelFocus');
+  }
+  lastPanelScrubStep = panelScrubStep;
+
+  // Track-level border+glow: only update when the focused track changes,
+  // not on every scrub step within the same track.
+  if (lastPanelFocusTrack !== panelSelectedTrack) {
+    if (lastPanelFocusTrack !== -1 && panelPage !== 2) {
+      document.getElementById(`track-${lastPanelFocusTrack}`)?.closest('.track')
+        ?.classList.remove('panelFocusTrack');
+    }
+    const newTrackDiv = document.getElementById(`track-${panelSelectedTrack}`)?.closest('.track');
+    if (newTrackDiv) newTrackDiv.classList.toggle('panelFocusTrack', panelPage !== 2);
+
+    if (panelPage !== 2 && document.getElementById('autoScrollToFocus')?.checked) {
+      document.getElementById(`trackBlock-${panelSelectedTrack}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    lastPanelFocusTrack = panelSelectedTrack;
+  }
+
+  // When leaving the Middle page entirely, clear all step focus highlights.
+  if (panelPage !== 1) {
+    document.querySelectorAll('.step.panelFocus').forEach(c => c.classList.remove('panelFocus'));
+    lastPanelScrubStep = -1;
   }
 }
 
@@ -1109,15 +1156,23 @@ function RenderCVRouting(trackMin, trackMax, stepMin, stepMax) {
 // available voltage range (not the full ±6V ADC range) maps to track 0 / N-1.
 // `which`: 0=track, 1=step. `point`: 0=min, 1=max.
 const cvCalCapture = { trackMin: null, trackMax: null, stepMin: null, stepMax: null };
+// Pending capture context: set before sending MSG_REQUEST_CV_READING, cleared in MSG_CV_READING handler.
+let cvCalPending = null;
 
 function CaptureCalPoint(which, point) {
-  // Ask the firmware to send its current CVVal as a calibration sample.
-  // The firmware reads the live CV input and encodes it in the response.
-  SendSysEx(MSG_SET_CV_ROUTING_CAL, [which | 0x40, point]); // 0x40 flag = "read only, don't store yet"
-  // For now, prompt the user to read the raw CV value shown in the routing state:
+  // Request a raw CV reading snapshot from firmware. The response (MSG_CV_READING)
+  // is handled in the dispatch switch above, which extracts the right channel,
+  // stores it in cvCalCapture, and calls ApplyCVCal once both endpoints are set.
   const label = which === 0 ? 'track' : 'step';
   const pname = point === 0 ? 'min' : 'max';
-  DebugLog(`CV cal: capturing ${label} ${pname} — set your CV to the ${pname} position and the firmware will record it`);
+  const route = which === 0 ? cvTrackRoute : cvStepRoute;
+  if (route === 0) {
+    DebugLog(`CV cal: select CV1 or CV2 for ${label} routing before calibrating`);
+    return;
+  }
+  cvCalPending = { which, point };
+  SendSysEx(MSG_REQUEST_CV_READING);
+  DebugLog(`CV cal: requesting ${label} ${pname} reading — hold CV steady`);
 }
 
 function ApplyCVCal(which) {
@@ -1132,6 +1187,53 @@ function ApplyCVCal(which) {
 function ResetCVCal(which) {
   const lo = v => v & 0x7F, hi = v => (v >> 7) & 0x7F;
   SendSysEx(MSG_SET_CV_ROUTING_CAL, [which, lo(0), hi(0), lo(4095), hi(4095)]);
+}
+
+// ============================================================
+// Panel freeze and knob diagnostic stream
+// ============================================================
+let panelFrozen = false;
+let knobStreaming = false;
+
+function SetPanelFreeze(enable) {
+  panelFrozen = enable;
+  SendSysEx(MSG_SET_PANEL_FREEZE, [enable ? 1 : 0]);
+  const btn = document.getElementById('freezeBtn');
+  if (btn) {
+    btn.textContent = enable ? 'Unfreeze hardware' : 'Freeze hardware';
+    btn.style.background = enable ? '#a33' : '';
+  }
+  DebugLog(`Panel ${enable ? 'frozen' : 'unfrozen'} — hardware controls ${enable ? 'silenced' : 'active'}`);
+}
+
+function TogglePanelFreeze() { SetPanelFreeze(!panelFrozen); }
+
+function SetKnobStream(enable) {
+  knobStreaming = enable;
+  SendSysEx(MSG_SET_KNOB_STREAM, [enable ? 1 : 0]);
+  const btn = document.getElementById('streamBtn');
+  if (btn) {
+    btn.textContent = enable ? 'Stop stream' : 'Stream knob values';
+    btn.style.background = enable ? '#363' : '';
+  }
+  const row = document.getElementById('knobDebugRow');
+  if (row) row.style.display = enable ? '' : 'none';
+}
+
+function ToggleKnobStream() { SetKnobStream(!knobStreaming); }
+
+function fmt(v) { return String(v).padStart(4); }
+
+function RenderKnobDebug(rawY, filtY, rawX, filtX, rawCV0, filtCV0, rawCV1, filtCV1) {
+  const el = document.getElementById('knobDebugValues');
+  if (!el) return;
+  // Express filtered values as percentage of full range (0-4095)
+  const pct = v => ((v / 4095) * 100).toFixed(1).padStart(5) + '%';
+  el.textContent =
+    `Y  raw=${fmt(rawY)}  filt=${fmt(filtY)} (${pct(filtY)})  | ` +
+    `X  raw=${fmt(rawX)}  filt=${fmt(filtX)} (${pct(filtX)})  | ` +
+    `CV1 raw=${fmt(rawCV0)}  filt=${fmt(filtCV0)} (${pct(filtCV0)})  | ` +
+    `CV2 raw=${fmt(rawCV1)}  filt=${fmt(filtCV1)} (${pct(filtCV1)})`;
 }
 
 function SetLiveShift(trackIndex, value) {

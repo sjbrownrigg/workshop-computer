@@ -1,4 +1,5 @@
 #include "sequencer.h"
+#include <cstring>
 
 namespace stepbridge
 {
@@ -29,9 +30,70 @@ void AdvanceTrackSample(Track &track, uint32_t samplesPerStep, bool stepAdvance)
 {
 	if (stepAdvance)
 	{
-		track.currentStep++;
-		if (track.currentStep >= track.length) track.currentStep = 0;
+		switch (track.arpMode)
+		{
+		case ArpMode::Off:
+		case ArpMode::Forward:
+		default:
+			track.currentStep++;
+			if (track.currentStep >= track.length) track.currentStep = 0;
+			break;
+		case ArpMode::Reverse:
+			track.currentStep--;
+			if (track.currentStep < 0) track.currentStep = (int8_t)(track.length - 1);
+			break;
+		case ArpMode::PingPong: {
+			if (track.pingPongDir) {
+				const int next = (int)track.currentStep + 1;
+				if (next >= (int)track.length) {
+					const int bounce = (int)track.length - 2;
+					track.currentStep = (int8_t)(bounce >= 0 ? bounce : 0);
+					track.pingPongDir = false;
+				} else {
+					track.currentStep = (int8_t)next;
+				}
+			} else {
+				const int next = (int)track.currentStep - 1;
+				if (next < 0) {
+					track.currentStep = (track.length >= 2) ? (int8_t)1 : (int8_t)0;
+					track.pingPongDir = true;
+				} else {
+					track.currentStep = (int8_t)next;
+				}
+			}
+			break;
+		}
+		case ArpMode::Random:
+			track.randState = track.randState * 1664525u + 1013904223u;
+			track.currentStep = (int8_t)((track.randState >> 16) % (uint32_t)track.length);
+			break;
+		case ArpMode::Converge:
+		case ArpMode::Diverge:
+			if (track.arpNumSteps > 0) {
+				track.currentStep = (int8_t)track.arpStepOrder[track.arpPosition];
+				track.arpPosition = (track.arpPosition + 1u >= track.arpNumSteps) ? 0u : (track.arpPosition + 1u);
+			}
+			break;
+		}
 		track.sampleInStep = 0;
+
+		// Probability roll — once per step; result persists until the next advance.
+		// Tied steps and rests bypass the check (ties always continue; rests close
+		// the gate via the WIRE_REST check below regardless of this flag).
+		const Step &ns = track.steps[track.currentStep];
+		if (ns.tied || ns.note == WIRE_REST || ns.probability >= 7u)
+		{
+			track.currentStepFires = true;
+		}
+		else if (ns.probability == 0u)
+		{
+			track.currentStepFires = false;
+		}
+		else
+		{
+			track.randState = track.randState * 1664525u + 1013904223u;
+			track.currentStepFires = ((track.randState >> 25) % 7u) < ns.probability;
+		}
 	}
 	else
 	{
@@ -40,7 +102,7 @@ void AdvanceTrackSample(Track &track, uint32_t samplesPerStep, bool stepAdvance)
 
 	const Step &step = track.steps[track.currentStep];
 
-	if (step.note == WIRE_REST)
+	if (step.note == WIRE_REST || !track.currentStepFires)
 	{
 		track.gateOpen = false;
 		return;
@@ -81,26 +143,61 @@ void AdvanceTrackSample(Track &track, uint32_t samplesPerStep, bool stepAdvance)
 
 void ResetTrackPlayhead(Track &track)
 {
-	track.currentStep = -1; // AdvanceTrackSample's next stepAdvance call will roll this to 0
-	track.sampleInStep = 0;
-	track.gateOpen = false;
+	track.currentStep      = -1; // AdvanceTrackSample's next stepAdvance call will roll this to step 0 (Forward) or length-1 (Reverse)
+	track.sampleInStep     = 0;
+	track.currentStepFires = true;
+	track.gateOpen         = false;
+	track.pingPongDir      = true; // restart PingPong in forward direction
+	track.arpPosition      = 0;   // restart Converge/Diverge from beginning of sorted order
+}
+
+// Returns the semitone-offset intervals for a scale and writes the count.
+// Chromatic returns nullptr (count=12) — callers use the raw note directly.
+// Shared by NearestScaleNote and the Markov randomize functions.
+static const int* GetScalePattern(Scale scale, int &count)
+{
+	static const int kMajor[]          = {0, 2, 4, 5, 7, 9, 11};
+	static const int kNaturalMinor[]   = {0, 2, 3, 5, 7, 8, 10};
+	static const int kPentatonicMajor[]= {0, 2, 4, 7, 9};
+	static const int kHarmonicMinor[]  = {0, 2, 3, 5, 7, 8, 11};
+	static const int kMelodicMinor[]   = {0, 2, 3, 5, 7, 9, 11};
+	static const int kDorian[]         = {0, 2, 3, 5, 7, 9, 10};
+	static const int kPhrygian[]       = {0, 1, 3, 5, 7, 8, 10};
+	static const int kLydian[]         = {0, 2, 4, 6, 7, 9, 11};
+	static const int kMixolydian[]     = {0, 2, 4, 5, 7, 9, 10};
+	static const int kLocrian[]        = {0, 1, 3, 5, 6, 8, 10};
+	static const int kBlues[]          = {0, 3, 5, 6, 7, 10};
+	static const int kWholeTone[]      = {0, 2, 4, 6, 8, 10};
+	static const int kPentatonicMinor[]= {0, 3, 5, 7, 10};
+	static const int kHungarianMinor[] = {0, 2, 3, 6, 7, 8, 11};
+	static const int kJapanese[]       = {0, 2, 3, 7, 8};
+
+	switch (scale)
+	{
+	case Scale::Major:          count = 7; return kMajor;
+	case Scale::NaturalMinor:   count = 7; return kNaturalMinor;
+	case Scale::PentatonicMajor:count = 5; return kPentatonicMajor;
+	case Scale::HarmonicMinor:  count = 7; return kHarmonicMinor;
+	case Scale::MelodicMinor:   count = 7; return kMelodicMinor;
+	case Scale::Dorian:         count = 7; return kDorian;
+	case Scale::Phrygian:       count = 7; return kPhrygian;
+	case Scale::Lydian:         count = 7; return kLydian;
+	case Scale::Mixolydian:     count = 7; return kMixolydian;
+	case Scale::Locrian:        count = 7; return kLocrian;
+	case Scale::Blues:          count = 6; return kBlues;
+	case Scale::WholeTone:      count = 6; return kWholeTone;
+	case Scale::PentatonicMinor:count = 5; return kPentatonicMinor;
+	case Scale::HungarianMinor: count = 7; return kHungarianMinor;
+	case Scale::Japanese:       count = 5; return kJapanese;
+	default: count = 12; return nullptr; // Chromatic
+	}
 }
 
 int NearestScaleNote(int note, uint8_t key, Scale scale)
 {
-	static const int kMajor[] = {0, 2, 4, 5, 7, 9, 11};
-	static const int kNaturalMinor[] = {0, 2, 3, 5, 7, 8, 10};
-	static const int kPentatonic[] = {0, 2, 4, 7, 9};
-
-	const int *pattern;
 	int patternLen;
-	switch (scale)
-	{
-	case Scale::Major: pattern = kMajor; patternLen = 7; break;
-	case Scale::NaturalMinor: pattern = kNaturalMinor; patternLen = 7; break;
-	case Scale::Pentatonic: pattern = kPentatonic; patternLen = 5; break;
-	default: return note; // Chromatic - every note is already "in scale"
-	}
+	const int *pattern = GetScalePattern(scale, patternLen);
+	if (!pattern) return note; // Chromatic — every note is in scale
 
 	const int relative = ((note - key) % 12 + 12) % 12;
 	const int octaveBase = note - relative;
@@ -130,6 +227,111 @@ int NearestScaleNote(int note, uint8_t key, Scale scale)
 	return best;
 }
 
+// Markov chain pitch selection: given the current scale degree and degree
+// Per-style transition weights indexed by distance between scale degrees.
+// Index 0 = self-transition; index N = distance-N transition.
+// kMarkovTonicBonus[style] is added to degree 0 (when it is not the current degree).
+static const uint8_t kMarkovWeights[3][7] = {
+    // Melodic: stepwise bias, moderate tonic gravity — familiar phrases
+    { 2, 28, 10, 5, 3, 1, 1 },
+    // Intervallic: 3rd/4th/5th leaps preferred, strong tonic pull — angular, dramatic
+    { 1,  3, 20, 24, 18, 8, 4 },
+    // Floating: near-uniform, no tonic anchor — drifts, discovers unexpected territory
+    { 2,  8,  8,  8,  8, 8, 8 },
+};
+static const uint8_t kMarkovTonicBonus[3] = { 8, 14, 0 };
+
+static int MarkovNextDegree(int currentDegree, int degreeCount, uint32_t &randState,
+                             uint8_t style = 0)
+{
+	auto NextRand = [&randState]() -> uint32_t
+	{
+		randState ^= randState << 13;
+		randState ^= randState >> 17;
+		randState ^= randState << 5;
+		return randState;
+	};
+
+	const uint8_t styleIdx = style < 3 ? style : 0;
+	uint32_t weights[12]; // degreeCount ≤ 12
+	uint32_t total = 0;
+	for (int j = 0; j < degreeCount; j++)
+	{
+		uint32_t w;
+		if (j == currentDegree)
+		{
+			w = kMarkovWeights[styleIdx][0]; // self-transition
+		}
+		else
+		{
+			const int dist = j > currentDegree ? j - currentDegree : currentDegree - j;
+			const int capped = dist > 6 ? 6 : dist;
+			w = kMarkovWeights[styleIdx][capped];
+			if (j == 0) w += kMarkovTonicBonus[styleIdx]; // tonic gravity
+		}
+		weights[j] = w;
+		total += w;
+	}
+	// Sample via inverse CDF
+	uint32_t r = (uint32_t)(((uint64_t)NextRand() * total) >> 32);
+	for (int j = 0; j < degreeCount; j++)
+	{
+		if (r < weights[j]) return j;
+		r -= weights[j];
+	}
+	return degreeCount - 1;
+}
+
+// Musical length presets for structure variation — multiples and common phrase lengths.
+static const uint8_t kMusicalLengths[]  = { 4, 6, 8, 10, 12, 14, 16, 20, 24, 32 };
+static const uint8_t kMusicalTimeSigs[] = { 2, 3, 4, 6, 7, 8 };
+
+// Returns true when `len` has no regular divisor between 2 and 8 that yields
+// ≥ 2 complete bars — i.e. the length is prime-ish and suits irregular grouping.
+static bool ShouldUseIrregular(uint8_t len)
+{
+    for (uint8_t d = 2; d <= 8 && d <= len / 2; d++)
+        if (len % d == 0) return false;
+    return true;
+}
+
+// Fill track.irregularGroups[] with groups of 2–4 that sum exactly to
+// track.length, biased toward 3s and 4s (avoids leaving a remainder of 1).
+static void GenerateIrregularGroups(Track &track, uint32_t &randState)
+{
+    auto XS = [&]() -> uint32_t {
+        randState ^= randState << 13;
+        randState ^= randState >> 17;
+        randState ^= randState << 5;
+        return randState;
+    };
+    // Pool biased 3:4 — feels natural for additive meters.
+    static const uint8_t kPool[] = { 3, 3, 4, 4 };
+    constexpr int kPoolSz = (int)(sizeof(kPool) / sizeof(kPool[0]));
+
+    uint8_t remaining = track.length;
+    track.irregularGroupCount = 0;
+
+    while (remaining > 0 && track.irregularGroupCount < MAX_IRREGULAR_GROUPS) {
+        const int spotsLeft = MAX_IRREGULAR_GROUPS - (int)track.irregularGroupCount;
+        uint8_t pick;
+        if (spotsLeft == 1 || remaining <= 5) {
+            pick = remaining; // last spot takes whatever is left
+        } else {
+            pick = kPool[(int)(((uint64_t)XS() * (uint32_t)kPoolSz) >> 32)];
+            // Don't strand a remainder of 1 — step pick down to avoid it.
+            if (remaining > pick && (remaining - pick) == 1) pick--;
+            if (pick < 2)       pick = 2;
+            if (pick > remaining) pick = remaining;
+        }
+        track.irregularGroups[track.irregularGroupCount++] = pick;
+        remaining -= pick;
+    }
+    track.timeSigMode         = TimeSigMode::Irregular;
+    track.timeSigNum          = 0; // unused in irregular mode
+    track.irregularGroupCount = (track.irregularGroupCount > 0) ? track.irregularGroupCount : 1;
+}
+
 // True if `stepIndex` is the first step of a bar group, per the SAME
 // Regular/Irregular grouping rule the Web UI's ComputeBarGroups uses for
 // divider placement (plan 2.3) - reimplemented here rather than shared,
@@ -153,11 +355,93 @@ static bool IsBarStart(const Track &track, uint8_t stepIndex)
 	return (stepIndex % num) == 0;
 }
 
-void RandomizeTrack(Track &track, uint32_t &randState)
+void RebuildArpOrder(Track &track)
 {
-	// xorshift32 - simple, self-contained, no library dependency. Not
-	// reachable from ProcessSample, so none of the flash-residency
-	// concerns that apply to ISR code apply here.
+	if (track.arpMode != ArpMode::Converge && track.arpMode != ArpMode::Diverge) return;
+
+	// Separate steps into pitched and rest.
+	uint8_t sorted[MAX_STEPS];     // pitched step indices, will be sorted ascending by note
+	uint8_t restIdx[MAX_STEPS];    // rest step indices in original order
+	uint8_t pitchedCount = 0, restCount = 0;
+	for (uint8_t si = 0; si < track.length; si++)
+	{
+		if (track.steps[si].note == WIRE_REST) restIdx[restCount++] = si;
+		else                                   sorted[pitchedCount++] = si;
+	}
+
+	// Insertion-sort pitched steps by note value ascending.
+	for (uint8_t i = 1; i < pitchedCount; i++)
+	{
+		const uint8_t key     = sorted[i];
+		const int8_t  keyNote = track.steps[key].note;
+		int j = (int)i - 1;
+		while (j >= 0 && track.steps[sorted[j]].note > keyNote)
+		{
+			sorted[j + 1] = sorted[j];
+			j--;
+		}
+		sorted[j + 1] = key;
+	}
+
+	uint8_t idx = 0;
+
+	if (pitchedCount > 0)
+	{
+		if (track.arpMode == ArpMode::Converge)
+		{
+			// Interleave from extremes inward: lowest, highest, 2nd-lowest, 2nd-highest, …
+			uint8_t lo = 0, hi = pitchedCount - 1;
+			while (lo <= hi)
+			{
+				track.arpStepOrder[idx++] = sorted[lo++];
+				if (lo <= hi)
+					track.arpStepOrder[idx++] = sorted[hi--];
+			}
+		}
+		else // Diverge
+		{
+			// From centre outward: middle note(s) first, then expanding toward extremes.
+			int lo = (int)(pitchedCount - 1) / 2;
+			int hi = (int)pitchedCount / 2;
+			if (lo == hi)
+			{
+				track.arpStepOrder[idx++] = sorted[lo];
+				lo--; hi++;
+			}
+			while (lo >= 0 && hi < (int)pitchedCount)
+			{
+				track.arpStepOrder[idx++] = sorted[lo--];
+				track.arpStepOrder[idx++] = sorted[hi++];
+			}
+			while (lo >= 0)              track.arpStepOrder[idx++] = sorted[lo--];
+			while (hi < (int)pitchedCount) track.arpStepOrder[idx++] = sorted[hi++];
+		}
+	}
+
+	// When enabled, append rest steps after the pitched sequence so they
+	// contribute rhythmic silence to the repeating arp pattern.
+	if (track.arpIncludeRests)
+	{
+		for (uint8_t r = 0; r < restCount; r++)
+			track.arpStepOrder[idx++] = restIdx[r];
+	}
+
+	track.arpNumSteps = idx;
+
+	// Clamp position in case arpNumSteps shrank after a length or content change.
+	if (track.arpNumSteps > 0 && track.arpPosition >= track.arpNumSteps)
+		track.arpPosition = 0;
+}
+
+// Chromatic degree table (one semitone per degree) — used by the Markov
+// randomizers when track.scale == Chromatic.
+static const int kChromatic[] = {0,1,2,3,4,5,6,7,8,9,10,11};
+
+void RandomizeTrack(Track &track, uint32_t &randState,
+                    RandomizeStyle style, uint8_t structureFlags)
+{
+	// xorshift32 PRNG — not reachable from ProcessSample, so no
+	// flash-residency constraints apply here.
 	auto NextRand = [&randState]() -> uint32_t
 	{
 		randState ^= randState << 13;
@@ -165,70 +449,371 @@ void RandomizeTrack(Track &track, uint32_t &randState)
 		randState ^= randState << 5;
 		return randState;
 	};
-	// Multiply-shift range mapping (no modulo bias) - lo/hi both inclusive.
 	auto RandRange = [&](int lo, int hi) -> int
 	{
 		const uint32_t span = (uint32_t)(hi - lo + 1);
 		return lo + (int)(((uint64_t)NextRand() * span) >> 32);
 	};
 
-	// Crude melodic-motion weighting via a lookup table rather than a
-	// formula: mostly small steps (stay/+-1/+-2 scale-ish semitones),
-	// occasionally a bigger leap, so the result wanders rather than
-	// jumping randomly note to note.
-	static const int kDeltaWeights[] = {0, 0, 0, 1, 1, -1, -1, 2, -2, 5, -5};
-	constexpr int kDeltaWeightCount = sizeof(kDeltaWeights) / sizeof(kDeltaWeights[0]);
+	const uint8_t styleIdx = (uint8_t)style < 3u ? (uint8_t)style : 0u;
 
-	int lastNote = 60 + track.key; // start near middle C, biased toward the track's key
+	// ── Structure variation (applied before note generation) ───────────────
+	if (structureFlags & RAND_FLAG_VARY_LENGTH)
+	{
+		constexpr int kLenCount = (int)(sizeof(kMusicalLengths) / sizeof(kMusicalLengths[0]));
+		// Find the entry in kMusicalLengths closest to the current length.
+		int closestIdx = 0, closestDist = 255;
+		for (int i = 0; i < kLenCount; i++) {
+			int d = (int)kMusicalLengths[i] - (int)track.length;
+			if (d < 0) d = -d;
+			if (d < closestDist) { closestDist = d; closestIdx = i; }
+		}
+		// Pick from ±2 positions around the closest entry, excluding the current length.
+		int lo = closestIdx - 2; if (lo < 0) lo = 0;
+		int hi = closestIdx + 2; if (hi >= kLenCount) hi = kLenCount - 1;
+		// Allow up to 8 attempts to pick a different length.
+		uint8_t newLen = track.length;
+		for (int attempt = 0; attempt < 8 && newLen == track.length; attempt++)
+			newLen = kMusicalLengths[lo + (int)(((uint64_t)NextRand() * (uint32_t)(hi - lo + 1)) >> 32)];
+		if (newLen > track.highWaterLength) track.highWaterLength = newLen;
+		track.length = newLen;
+	}
+
+	if (structureFlags & RAND_FLAG_VARY_TIMESIG)
+	{
+		if (ShouldUseIrregular(track.length)) {
+			GenerateIrregularGroups(track, randState);
+		} else {
+			constexpr int kTsCount = (int)(sizeof(kMusicalTimeSigs) / sizeof(kMusicalTimeSigs[0]));
+			track.timeSigNum          = kMusicalTimeSigs[(int)(((uint64_t)NextRand() * (uint32_t)kTsCount) >> 32)];
+			track.timeSigMode         = TimeSigMode::Regular;
+			track.irregularGroupCount = 0;
+		}
+	}
+
+	// Snap length to a whole number of bars (Regular mode only —
+	// irregular groups are already generated to sum exactly to track.length).
+	if (structureFlags & (RAND_FLAG_VARY_LENGTH | RAND_FLAG_VARY_TIMESIG))
+	{
+		if (track.timeSigMode == TimeSigMode::Regular) {
+			const uint8_t sig = track.timeSigNum > 0 ? track.timeSigNum : 4;
+			if (track.length % sig != 0)
+			{
+				uint8_t snapped = (uint8_t)(((track.length / sig) + 1) * sig);
+				if (snapped > MAX_STEPS) snapped = (uint8_t)((track.length / sig) * sig);
+				if (snapped < sig)       snapped = sig;
+				if (snapped > track.highWaterLength) track.highWaterLength = snapped;
+				track.length = snapped;
+			}
+		}
+	}
+
+	// Resolve scale intervals for Markov chain. Chromatic falls back to the
+	// 12-semitone table so the same degree-based path handles all scales.
+	int degreeCount;
+	const int *intervals = GetScalePattern(track.scale, degreeCount);
+	if (!intervals) { intervals = kChromatic; } // degreeCount=12 already set
+
+	// Starting state: random degree, octave 5 → lands near middle C (MIDI 60)
+	// for key=C (0 + 0 + 5×12 = 60). Other keys shift proportionally.
+	int currentDegree = RandRange(0, degreeCount - 1);
+	int currentOctave = 5;
 
 	for (uint8_t i = 0; i < track.length; i++)
 	{
 		Step &step = track.steps[i];
 
-		if (RandRange(0, 99) < 20) // ~20% rest probability, for breathing room
+		// Rest: lower probability on bar-starts so metric structure stays audible.
+		const bool barStart = IsBarStart(track, i);
+		if (RandRange(0, 99) < (barStart ? 8 : 20))
 		{
-			step.note = WIRE_REST;
-			step.tied = false;
+			step.note       = WIRE_REST;
+			step.tied       = false;
 			step.ratchetCount = 1;
-			step.accent = false;
+			step.accent     = false;
+			step.gateLenPct = 50;
+			step.probability = 7;
 			continue;
 		}
 
-		const int delta = kDeltaWeights[RandRange(0, kDeltaWeightCount - 1)];
-		int note = lastNote + delta;
-		if (track.scale != Scale::Chromatic) note = NearestScaleNote(note, track.key, track.scale);
-		if (note < 0) note = 0;
+		// ── Markov pitch selection ──────────────────────────────────────────
+		currentDegree = MarkovNextDegree(currentDegree, degreeCount, randState, styleIdx);
+
+		int note = (int)track.key + intervals[currentDegree] + currentOctave * 12;
+
+		// Register management: self-correct if we drift outside [C2..C6] (36..84).
+		while (note < 36 && currentOctave < 7) { note += 12; currentOctave++; }
+		while (note > 84 && currentOctave > 2) { note -= 12; currentOctave--; }
+		if (note < 0)   note = 0;
 		if (note > 120) note = 120;
 		step.note = (int8_t)note;
-		lastNote = note;
 
-		// Accent weighted toward bar starts - gives the random pattern a
-		// sense of metric downbeat rather than accents landing anywhere.
-		const bool barStart = IsBarStart(track, i);
-		step.accent = RandRange(0, 99) < (barStart ? 60 : 10);
+		// ── Accent ─────────────────────────────────────────────────────────
+		step.accent = RandRange(0, 99) < (barStart ? 65 : 12);
 
-		// Tie and ratchet are mutually exclusive (plan 2.3) - one roll
-		// decides between them, kept low-probability so the result isn't
-		// a wall of ratchets.
-		const int tieRatchetRoll = RandRange(0, 99);
-		if (tieRatchetRoll < 8)
-		{
-			step.tied = true;
-			step.ratchetCount = 1;
-		}
-		else if (tieRatchetRoll < 14)
-		{
-			step.tied = false;
-			step.ratchetCount = (uint8_t)RandRange(2, 3);
-		}
+		// ── Ratchet / tie — Poisson-inspired distribution ──────────────────
+		// Decided before gate so gate floor can depend on ratchet count.
+		const int trRoll = RandRange(0, 99);
+		if      (trRoll <  7) { step.tied = true;  step.ratchetCount = 1; }
+		else if (trRoll < 15) { step.tied = false; step.ratchetCount = 2; }
+		else if (trRoll < 20) { step.tied = false; step.ratchetCount = 3; }
+		else if (trRoll < 21) { step.tied = false; step.ratchetCount = 4; }
+		else                  { step.tied = false; step.ratchetCount = 1; }
+
+		// ── Gate length — exponential-biased; floor raised for ratchets ────
+		// Short gates on ratcheted steps lose the pulses at audio rate.
+		// Each sub-pulse spans 1/N of the step, so the gate must be long
+		// enough for the subdivided pulse to register:
+		//   ×2 → ≥ 50 %   ×3 → ≥ 65 %   ×4 → ≥ 75 %
+		const uint32_t gateDie = NextRand() >> 26; // 0–63
+		if (step.ratchetCount >= 4)
+			step.gateLenPct = (uint8_t)RandRange(75, 90);
+		else if (step.ratchetCount == 3)
+			step.gateLenPct = (uint8_t)RandRange(65, 85);
+		else if (step.ratchetCount == 2)
+			step.gateLenPct = (uint8_t)RandRange(50, 80);
+		else if (gateDie < 25)
+			step.gateLenPct = (uint8_t)RandRange(10, 30);
+		else if (gateDie < 50)
+			step.gateLenPct = (uint8_t)RandRange(35, 70);
 		else
+			step.gateLenPct = (uint8_t)RandRange(75, 95);
+
+		// ── Step probability — stochastic playback ─────────────────────────
+		const int pRoll = RandRange(0, 99);
+		if      (pRoll < 55) step.probability = 7;
+		else if (pRoll < 68) step.probability = 6;
+		else if (pRoll < 80) step.probability = 5;
+		else if (pRoll < 89) step.probability = 4;
+		else if (pRoll < 95) step.probability = 3;
+		else if (pRoll < 98) step.probability = 2;
+		else                 step.probability = 1;
+	}
+}
+
+// Randomizes all tracks with coordinated rhythmic structure.
+//
+// Even-indexed tracks (0, 2…) are "primary" — denser on strong beats.
+// Odd-indexed tracks (1, 3…) are "complement" — denser on off-beats.
+// Each track's own time signature is used to classify metric weight, so
+// a track in 7/8 or 5/4 generates rhythms that respect its own bar structure.
+// Step probabilities are skewed toward partial values so the interaction
+// between tracks evolves stochastically over repeated playback ("bouncing").
+void RandomizeAllTracks(Pattern &pattern, uint32_t &randState,
+                        RandomizeStyle style, uint8_t structureFlags)
+{
+	if (pattern.numTracks == 0) return;
+
+	auto NextRand = [&randState]() -> uint32_t
+	{
+		randState ^= randState << 13;
+		randState ^= randState >> 17;
+		randState ^= randState << 5;
+		return randState;
+	};
+	auto RandRange = [&](int lo, int hi) -> int
+	{
+		const uint32_t span = (uint32_t)(hi - lo + 1);
+		return lo + (int)(((uint64_t)NextRand() * span) >> 32);
+	};
+
+	const uint8_t styleIdx = (uint8_t)style < 3u ? (uint8_t)style : 0u;
+
+	for (int ti = 0; ti < pattern.numTracks; ti++)
+	{
+		Track &t = pattern.tracks[ti];
+		const bool isPrimary = (ti % 2 == 0);
+
+		// Structure variation applied per track before note generation.
+		if (structureFlags & RAND_FLAG_VARY_LENGTH)
 		{
-			step.tied = false;
-			step.ratchetCount = 1;
+			constexpr int kLenCount = (int)(sizeof(kMusicalLengths) / sizeof(kMusicalLengths[0]));
+			int closestIdx = 0, closestDist = 255;
+			for (int i = 0; i < kLenCount; i++) {
+				int d = (int)kMusicalLengths[i] - (int)t.length;
+				if (d < 0) d = -d;
+				if (d < closestDist) { closestDist = d; closestIdx = i; }
+			}
+			int lo = closestIdx - 2; if (lo < 0) lo = 0;
+			int hi = closestIdx + 2; if (hi >= kLenCount) hi = kLenCount - 1;
+			uint8_t newLen = t.length;
+			for (int attempt = 0; attempt < 8 && newLen == t.length; attempt++)
+				newLen = kMusicalLengths[lo + (int)(((uint64_t)NextRand() * (uint32_t)(hi - lo + 1)) >> 32)];
+			if (newLen > t.highWaterLength) t.highWaterLength = newLen;
+			t.length = newLen;
+		}
+		if (structureFlags & RAND_FLAG_VARY_TIMESIG)
+		{
+			if (ShouldUseIrregular(t.length)) {
+				GenerateIrregularGroups(t, randState);
+			} else {
+				constexpr int kTsCount = (int)(sizeof(kMusicalTimeSigs) / sizeof(kMusicalTimeSigs[0]));
+				t.timeSigNum          = kMusicalTimeSigs[(int)(((uint64_t)NextRand() * (uint32_t)kTsCount) >> 32)];
+				t.timeSigMode         = TimeSigMode::Regular;
+				t.irregularGroupCount = 0;
+			}
 		}
 
-		step.gateLenPct = (uint8_t)RandRange(30, 90);
+		// Snap length to a whole number of bars (Regular mode only —
+		// irregular groups are already generated to sum exactly to t.length).
+		if (structureFlags & (RAND_FLAG_VARY_LENGTH | RAND_FLAG_VARY_TIMESIG))
+		{
+			if (t.timeSigMode == TimeSigMode::Regular) {
+				const uint8_t sig = t.timeSigNum > 0 ? t.timeSigNum : 4;
+				if (t.length % sig != 0)
+				{
+					uint8_t snapped = (uint8_t)(((t.length / sig) + 1) * sig);
+					if (snapped > MAX_STEPS) snapped = (uint8_t)((t.length / sig) * sig);
+					if (snapped < sig)       snapped = sig;
+					if (snapped > t.highWaterLength) t.highWaterLength = snapped;
+					t.length = snapped;
+				}
+			}
+		}
+
+		int degreeCount;
+		const int *intervals = GetScalePattern(t.scale, degreeCount);
+		if (!intervals) { intervals = kChromatic; }
+
+		int currentDegree = RandRange(0, degreeCount - 1);
+		int currentOctave = 5;
+
+		for (uint8_t si = 0; si < t.length; si++)
+		{
+			Step &step = t.steps[si];
+
+			// Metric weight from the track's own time signature:
+			//   bar-start=strong, even step=beat, odd step=off-beat.
+			const bool barStart  = IsBarStart(t, si);
+			const bool onBeat    = (si % 2 == 0);
+
+			// Rest probability shaped by metric position and track role.
+			// Primary tracks are dense on beats; complement tracks fill off-beats.
+			// Bar-starts stay mostly active for both roles (tutti anchor).
+			int restChance;
+			if (barStart)
+				restChance = 8;
+			else if (isPrimary)
+				restChance = onBeat ? 20 : 48;
+			else
+				restChance = onBeat ? 52 : 18;
+
+			if (RandRange(0, 99) < restChance)
+			{
+				step.note       = WIRE_REST;
+				step.tied       = false;
+				step.ratchetCount = 1;
+				step.accent     = false;
+				step.gateLenPct = 50;
+				step.probability = 7;
+				continue;
+			}
+
+			// ── Markov pitch ────────────────────────────────────────────────
+			currentDegree = MarkovNextDegree(currentDegree, degreeCount, randState, styleIdx);
+
+			int note = (int)t.key + intervals[currentDegree] + currentOctave * 12;
+			while (note < 36 && currentOctave < 7) { note += 12; currentOctave++; }
+			while (note > 84 && currentOctave > 2) { note -= 12; currentOctave--; }
+			if (note < 0)   note = 0;
+			if (note > 120) note = 120;
+			step.note = (int8_t)note;
+
+			// ── Accent ──────────────────────────────────────────────────────
+			step.accent = RandRange(0, 99) < (barStart ? 65 : 12);
+
+			// ── Ratchet / tie ────────────────────────────────────────────────
+			const int trRoll = RandRange(0, 99);
+			if      (trRoll <  7) { step.tied = true;  step.ratchetCount = 1; }
+			else if (trRoll < 15) { step.tied = false; step.ratchetCount = 2; }
+			else if (trRoll < 20) { step.tied = false; step.ratchetCount = 3; }
+			else if (trRoll < 21) { step.tied = false; step.ratchetCount = 4; }
+			else                  { step.tied = false; step.ratchetCount = 1; }
+
+			// ── Gate length — ratchet floor applied; complement shorter ──────
+			const uint32_t gateDie = NextRand() >> 26; // 0–63
+			if (step.ratchetCount >= 4)
+				step.gateLenPct = (uint8_t)RandRange(75, 90);
+			else if (step.ratchetCount == 3)
+				step.gateLenPct = (uint8_t)RandRange(65, 85);
+			else if (step.ratchetCount == 2)
+				step.gateLenPct = (uint8_t)RandRange(50, 80);
+			else if (isPrimary)
+			{
+				if      (gateDie < 25) step.gateLenPct = (uint8_t)RandRange(10, 30);
+				else if (gateDie < 50) step.gateLenPct = (uint8_t)RandRange(35, 70);
+				else                   step.gateLenPct = (uint8_t)RandRange(75, 95);
+			}
+			else
+			{
+				if      (gateDie < 38) step.gateLenPct = (uint8_t)RandRange(8, 25);
+				else if (gateDie < 60) step.gateLenPct = (uint8_t)RandRange(28, 55);
+				else                   step.gateLenPct = (uint8_t)RandRange(58, 80);
+			}
+
+			// ── Step probability — skewed lower than single-track randomize
+			// so the inter-track texture keeps shifting on each cycle.
+			const int pRoll = RandRange(0, 99);
+			if      (pRoll < 38) step.probability = 7;
+			else if (pRoll < 52) step.probability = 6;
+			else if (pRoll < 65) step.probability = 5;
+			else if (pRoll < 77) step.probability = 4;
+			else if (pRoll < 87) step.probability = 3;
+			else if (pRoll < 94) step.probability = 2;
+			else                 step.probability = 1;
+		}
+
+		RebuildArpOrder(t);
 	}
+}
+
+// ── Mutation ──────────────────────────────────────────────────────────────────
+
+void MutateTrackTick(Track &track)
+{
+    // Probability per step: (depthIdx+1) out of 8 → ~12% to ~100%.
+    // Max delta magnitude: depthIdx+2 → ±2 to ±9 semitones.
+    const uint32_t maxDelta  = (uint32_t)(track.mutDepthIdx) + 2u;
+    const uint32_t threshold = (uint32_t)(track.mutDepthIdx) + 1u; // 1-8 out of 8
+
+    for (int si = 0; si < (int)track.length; si++)
+    {
+        if (track.steps[si].note == WIRE_REST) continue;
+        track.randState = track.randState * 1664525u + 1013904223u;
+        // bits 29-27 give a 3-bit value 0-7; fire if it's below threshold
+        if (((track.randState >> 27) & 7u) >= threshold) continue;
+        track.randState = track.randState * 1664525u + 1013904223u;
+        const int8_t nudge = (track.randState & 1u) ? 1 : -1;
+        int8_t &d = track.mutNoteDelta[si];
+        const int newD = (int)d + (int)nudge;
+        d = (int8_t)(newD < -(int)maxDelta ? -(int)maxDelta
+                   : newD >  (int)maxDelta ?  (int)maxDelta
+                   : newD);
+    }
+}
+
+void LatchMutation(Track &track)
+{
+    for (int si = 0; si < (int)track.length; si++)
+    {
+        Step &step = track.steps[si];
+        if (step.note != WIRE_REST)
+        {
+            int latched = (int)step.note + (int)track.mutNoteDelta[si];
+            if (track.mutScaleConstrain && track.scale != Scale::Chromatic)
+                latched = NearestScaleNote(latched, track.key, track.scale);
+            if (latched < 0)   latched = 0;
+            if (latched > 126) latched = 126;
+            step.note = (int8_t)latched;
+        }
+        track.mutNoteDelta[si] = 0;
+    }
+}
+
+void ClearMutationDeltas(Track &track)
+{
+    std::memset(track.mutNoteDelta, 0, sizeof(track.mutNoteDelta));
+    track.mutStepCounter = 0;
 }
 
 } // namespace stepbridge

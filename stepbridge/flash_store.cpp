@@ -1,147 +1,191 @@
 #include "flash_store.h"
-
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+#include <algorithm>
 #include <cstring>
 
-#include "hardware/flash.h"
-#include "hardware/regs/addressmap.h"
-#include "hardware/sync.h"
+// Defined in main.cpp — pauses/resumes the core1 audio ISR around flash writes.
+extern void RequestAudioPause();
+extern void ReleaseAudioPause();
 
-namespace stepbridge
-{
+namespace stepbridge {
 
-namespace
-{
-const uint8_t *kFlashPtr = reinterpret_cast<const uint8_t *>(XIP_BASE + FlashStore::kOffset);
-uint8_t sector_buf[FlashStore::kBlockSize] __attribute__((aligned(4)));
-uint8_t wr_buf[FlashStore::kBlockSize] __attribute__((aligned(4)));
-} // namespace
+// Last two 4 KB sectors of flash (PICO_FLASH_SIZE_BYTES set by board header for Pico = 2 MB).
+static constexpr uint32_t kFlashRegionSize = 2u * FLASH_SECTOR_SIZE; // 8192 bytes
+static constexpr uint32_t kFlashOffset     = PICO_FLASH_SIZE_BYTES - kFlashRegionSize;
 
-void FlashStore::Load()
+// Program size must be a multiple of FLASH_PAGE_SIZE (256).
+static constexpr uint32_t kProgramSize =
+    ((sizeof(FlashData) + FLASH_PAGE_SIZE - 1u) / FLASH_PAGE_SIZE) * FLASH_PAGE_SIZE;
+
+static_assert(kProgramSize <= kFlashRegionSize, "FlashData too large for two sectors");
+
+static const FlashData *FlashPtr()
 {
-	std::memcpy(&data_, kFlashPtr, sizeof(Data));
-	if (data_.magic != kMagic)
-	{
-		data_ = Data{};
-		Save();
-	}
+    return reinterpret_cast<const FlashData *>(XIP_BASE + kFlashOffset);
 }
 
-void FlashStore::Save()
+// ── Internal write ────────────────────────────────────────────────────────────
+
+// Erases both sectors and re-programs kProgramSize bytes.
+// Caller is responsible for pausing core1 if it is running.
+static void WriteFlashData(const FlashData &data)
 {
-	static_assert(sizeof(Data) <= kBlockSize, "FlashStore::Data must fit in one flash sector");
+    static uint8_t buf[kProgramSize]; // static: avoids a kProgramSize-byte stack frame
+    memset(buf, 0xFF, sizeof(buf));
+    memcpy(buf, &data, sizeof(data));
 
-	std::memcpy(sector_buf, kFlashPtr, kBlockSize);
-	if (std::memcmp(&data_, sector_buf, sizeof(data_)) == 0)
-		return; // unchanged, avoid wearing out flash
-
-	std::memcpy(wr_buf, sector_buf, kBlockSize);
-	std::memcpy(wr_buf, &data_, sizeof(data_));
-
-	// Caller MUST already have called ComputerCard::ThisPtr()->RequestPause()
-	// before this and ->ReleasePause() after - see that method's comment in
-	// ComputerCard.h (vtable-in-flash, not just RAM-residency, is why).
-	const uint32_t ints = save_and_disable_interrupts();
-	flash_range_erase(kOffset, FLASH_SECTOR_SIZE);
-	flash_range_program(kOffset, wr_buf, kBlockSize);
-	restore_interrupts(ints);
+    RequestAudioPause();
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_erase(kFlashOffset, kFlashRegionSize);
+    flash_range_program(kFlashOffset, buf, kProgramSize);
+    restore_interrupts(ints);
+    ReleaseAudioPause();
 }
 
-void FlashStore::SaveSlot(int slot, const Pattern &pattern)
+// ── Public API ────────────────────────────────────────────────────────────────
+
+void FlashInit()
 {
-	if (slot < 0 || slot >= NUM_SAVE_SLOTS) return;
-
-	data_.tempoBpm = pattern.tempoBpm;
-	data_.clockSource = (uint8_t)pattern.clockSource;
-
-	StoredPattern &sp = data_.slots[slot];
-	sp.used = true;
-	const int numTracks = pattern.numTracks < NUM_SAVE_TRACKS ? pattern.numTracks : NUM_SAVE_TRACKS;
-	for (int i = 0; i < numTracks; i++)
-	{
-		const Track &t = pattern.tracks[i];
-		StoredTrack &st = sp.tracks[i];
-		st.length = t.length;
-		st.timeSigMode = (uint8_t)t.timeSigMode;
-		st.timeSigNum = t.timeSigNum;
-		st.irregularGroupCount = t.irregularGroupCount;
-		for (int g = 0; g < MAX_IRREGULAR_GROUPS; g++) st.irregularGroups[g] = t.irregularGroups[g];
-		st.midiChannel = t.midiChannel;
-		st.midiEnabled = t.midiEnabled ? 1 : 0;
-		st.key = t.key;
-		st.scale = (uint8_t)t.scale;
-		st.shift = t.shift;
-		for (int s = 0; s < MAX_STEPS; s++)
-		{
-			const Step &step = t.steps[s];
-			const uint8_t ratchetBits = (uint8_t)((step.ratchetCount < 1 ? 1 : step.ratchetCount) - 1) & 0x07;
-			st.steps[s].note = step.note;
-			st.steps[s].gateLenPct = step.gateLenPct;
-			st.steps[s].flags = (step.tied ? 0x01 : 0) | (step.accent ? 0x02 : 0) | (ratchetBits << 2);
-		}
-	}
-	Save();
+    if (FlashPtr()->magic == kFlashMagic) return;
+    // Fresh or corrupted flash — erase both sectors so the magic-check branch works on next save.
+    // Called before multicore_launch_core1, so no RequestPause needed; interrupt
+    // disable is sufficient.
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_erase(kFlashOffset, kFlashRegionSize);
+    restore_interrupts(ints);
 }
 
-bool FlashStore::LoadSlot(int slot, Pattern &pattern) const
+bool FlashSaveSlot(const Pattern &p, int slot)
 {
-	if (slot < 0 || slot >= NUM_SAVE_SLOTS) return false;
-	const StoredPattern &sp = data_.slots[slot];
-	if (!sp.used) return false;
+    if (slot < 0 || slot >= kNumSaveSlots) return false;
 
-	pattern.tempoBpm = (data_.tempoBpm >= 20 && data_.tempoBpm <= 999) ? data_.tempoBpm : 120;
-	pattern.clockSource = (data_.clockSource <= 2) ? (ClockSource)data_.clockSource : ClockSource::Internal;
+    static FlashData data; // static: sizeof(FlashData)=3268 — too large for the 4KB scratch-bank stack
+    if (FlashPtr()->magic == kFlashMagic) {
+        data = *FlashPtr();
+    } else {
+        memset(&data, 0, sizeof(data));
+        data.magic         = kFlashMagic;
+        data.lastSavedSlot = -1;
+    }
 
-	const int numTracks = pattern.numTracks < NUM_SAVE_TRACKS ? pattern.numTracks : NUM_SAVE_TRACKS;
-	for (int i = 0; i < numTracks; i++)
-	{
-		Track &t = pattern.tracks[i];
-		const StoredTrack &st = sp.tracks[i];
+    data.lastSavedSlot = (int8_t)slot;
+    StoredSlot &ss = data.slots[slot];
+    ss.used        = 1;
+    ss.numTracks   = (uint8_t)std::min((int)p.numTracks, MAX_PLAYABLE_TRACKS);
+    ss.tempoBpm_lo = (uint8_t)(p.tempoBpm & 0xFFu);
+    ss.tempoBpm_hi = (uint8_t)(p.tempoBpm >> 8);
+    ss.clockSource = (uint8_t)p.clockSource;
+    ss._pad[0] = ss._pad[1] = ss._pad[2] = 0;
 
-		// Defensively clamp rather than trust raw flash content verbatim -
-		// same reasoning as EvoSeq's LoadSlot.
-		t.length = (st.length >= 1 && st.length <= MAX_STEPS) ? st.length : 8;
-		t.highWaterLength = t.length; // freshly-loaded data is the new growth baseline
-		t.timeSigMode = (st.timeSigMode <= 1) ? (TimeSigMode)st.timeSigMode : TimeSigMode::Regular;
-		t.timeSigNum = (st.timeSigNum >= 1 && st.timeSigNum <= 32) ? st.timeSigNum : 4;
-		t.irregularGroupCount = (st.irregularGroupCount <= MAX_IRREGULAR_GROUPS) ? st.irregularGroupCount : 0;
-		for (int g = 0; g < MAX_IRREGULAR_GROUPS; g++)
-		{
-			const uint8_t v = st.irregularGroups[g];
-			t.irregularGroups[g] = (v >= 1 && v <= 32) ? v : 4;
-		}
-		t.midiChannel = (st.midiChannel >= 1 && st.midiChannel <= 16) ? st.midiChannel : 1;
-		t.midiEnabled = st.midiEnabled != 0;
-		t.key = (st.key <= 11) ? st.key : 0;
-		t.scale = (st.scale <= 3) ? (Scale)st.scale : Scale::Chromatic;
-		t.shift = (st.shift >= -24 && st.shift <= 24) ? st.shift : 0;
+    for (int ti = 0; ti < (int)ss.numTracks; ti++) {
+        const Track &t  = p.tracks[ti];
+        StoredTrack &st = ss.tracks[ti];
+        st.length      = t.length;
+        st.midiChannel = t.midiChannel;
+        st.midiEnabled = t.midiEnabled ? 1u : 0u;
+        st.key         = t.key;
+        st.scale       = (uint8_t)t.scale;
+        st.shift       = t.shift;
+        st.portaRateMs = t.portaRateMs;
+        st.arpMode             = (uint8_t)t.arpMode | (t.arpIncludeRests ? 0x80u : 0u);
+        st.accentOutMode       = t.accentOutMode;
+        st.timeSigNum          = t.timeSigNum;
+        st.timeSigMode         = (uint8_t)t.timeSigMode;
+        st.irregularGroupCount = t.irregularGroupCount;
+        std::memcpy(st.irregularGroups, t.irregularGroups, MAX_IRREGULAR_GROUPS);
+        for (int si = 0; si < MAX_STEPS; si++) {
+            const Step &s   = t.steps[si];
+            StoredStep &out = st.steps[si];
+            out.note       = s.note;
+            out.gateLenPct = s.gateLenPct;
+            uint8_t f = 0;
+            if (s.tied)   f |= 0x01u;
+            if (s.accent) f |= 0x02u;
+            f |= (uint8_t)(((uint8_t)(s.ratchetCount - 1u) & 7u) << 2);
+            f |= (uint8_t)((s.probability & 7u) << 5);
+            out.flags = f;
+        }
+    }
 
-		for (int s = 0; s < MAX_STEPS; s++)
-		{
-			const StoredStep &ss = st.steps[s];
-			t.steps[s].note = (ss.note == WIRE_REST || (ss.note >= 0 && ss.note <= 120)) ? ss.note : WIRE_REST;
-			t.steps[s].gateLenPct = (ss.gateLenPct >= 1 && ss.gateLenPct <= 100) ? ss.gateLenPct : 50;
-			t.steps[s].tied = (ss.flags & 0x01) != 0;
-			t.steps[s].accent = (ss.flags & 0x02) != 0;
-			const uint8_t rc = (uint8_t)(((ss.flags >> 2) & 0x07) + 1);
-			t.steps[s].ratchetCount = (rc >= 1 && rc <= MAX_RATCHET) ? rc : 1;
-		}
-
-		// Runtime-only fields reset for a clean start. mute/solo
-		// deliberately untouched (live-performance toggles, not composition
-		// data - a load shouldn't change your current mixing setup).
-		t.currentStep = 0;
-		t.sampleInStep = 0;
-		t.gateOpen = false;
-	}
-	return true;
+    WriteFlashData(data);
+    return true;
 }
 
-uint8_t FlashStore::SlotBitmap() const
+bool FlashLoadSlot(Pattern &p, int slot)
 {
-	uint8_t bitmap = 0;
-	for (int i = 0; i < NUM_SAVE_SLOTS; i++)
-		if (data_.slots[i].used) bitmap |= (uint8_t)(1 << i);
-	return bitmap;
+    if (slot < 0 || slot >= kNumSaveSlots)     return false;
+    if (FlashPtr()->magic != kFlashMagic)       return false;
+    const StoredSlot &ss = FlashPtr()->slots[slot];
+    if (!ss.used)                               return false;
+
+    p.numTracks   = std::min((uint8_t)MAX_PLAYABLE_TRACKS, ss.numTracks);
+    p.tempoBpm    = (uint16_t)ss.tempoBpm_lo | ((uint16_t)ss.tempoBpm_hi << 8);
+    p.clockSource = (ClockSource)ss.clockSource;
+    if (p.tempoBpm < 20 || p.tempoBpm > 300) p.tempoBpm = 120;
+
+    for (int ti = 0; ti < (int)p.numTracks; ti++) {
+        const StoredTrack &st = ss.tracks[ti];
+        Track &t = p.tracks[ti];
+        t.length          = std::max((uint8_t)1, std::min((uint8_t)MAX_STEPS, st.length));
+        t.highWaterLength = t.length;
+        t.midiChannel     = (st.midiChannel >= 1 && st.midiChannel <= 16)
+                            ? st.midiChannel : (uint8_t)(ti + 1);
+        t.midiEnabled     = st.midiEnabled != 0;
+        t.key             = st.key % 12u;
+        t.scale           = (Scale)std::min((uint8_t)(kScaleCount-1u), st.scale);
+        t.shift           = (st.shift >= -24 && st.shift <= 24) ? st.shift : 0;
+        t.portaRateMs     = st.portaRateMs;
+        t.arpMode             = (ArpMode)std::min((uint8_t)(kArpModeCount - 1u), (uint8_t)(st.arpMode & 0x7Fu));
+        t.arpIncludeRests     = (st.arpMode & 0x80u) != 0;
+        t.accentOutMode       = std::min((uint8_t)3u, st.accentOutMode);
+        t.timeSigNum          = (st.timeSigNum >= 1 && st.timeSigNum <= MAX_STEPS) ? st.timeSigNum : 4u;
+        t.timeSigMode         = (st.timeSigMode == 1) ? TimeSigMode::Irregular : TimeSigMode::Regular;
+        t.irregularGroupCount = std::min((uint8_t)MAX_IRREGULAR_GROUPS, st.irregularGroupCount);
+        std::memcpy(t.irregularGroups, st.irregularGroups, MAX_IRREGULAR_GROUPS);
+        RebuildArpOrder(t); // no-op unless arpMode is Converge or Diverge
+        for (int si = 0; si < MAX_STEPS; si++) {
+            const StoredStep &in = st.steps[si];
+            Step &s = t.steps[si];
+            s.note         = in.note;
+            s.gateLenPct   = std::max((uint8_t)1u, std::min((uint8_t)100u, in.gateLenPct));
+            s.tied         = (in.flags & 0x01u) != 0;
+            s.accent       = (in.flags & 0x02u) != 0;
+            s.ratchetCount = (uint8_t)(((in.flags >> 2) & 7u) + 1u);
+            s.probability  = (in.flags >> 5) & 7u;
+        }
+        // Runtime fields (currentStep, gateOpen, sampleInStep) are intentionally
+        // not touched — caller decides whether to reset playheads.
+    }
+    return true;
+}
+
+uint8_t FlashSlotBitmap()
+{
+    if (FlashPtr()->magic != kFlashMagic) return 0;
+    uint8_t bm = 0;
+    for (int i = 0; i < kNumSaveSlots; i++) {
+        if (FlashPtr()->slots[i].used) bm |= (uint8_t)(1u << i);
+    }
+    return bm;
+}
+
+bool FlashBootLoad(Pattern &p)
+{
+    if (FlashPtr()->magic != kFlashMagic) return false;
+
+    // Prefer the slot most recently saved; fall back to the first populated slot.
+    const int8_t last = FlashPtr()->lastSavedSlot;
+    int target = -1;
+    if (last >= 0 && last < kNumSaveSlots && FlashPtr()->slots[last].used) {
+        target = last;
+    } else {
+        for (int i = 0; i < kNumSaveSlots; i++) {
+            if (FlashPtr()->slots[i].used) { target = i; break; }
+        }
+    }
+    if (target < 0) return false;
+    return FlashLoadSlot(p, target);
 }
 
 } // namespace stepbridge

@@ -1,195 +1,2643 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>StepBridge</title>
-<link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<title>StepBridge 2</title>
+<style>
+  :root{
+    --bg:#0f1117;--surface:#1a1d2a;--border:#2a2e42;
+    --text:#c8cce0;--dim:#666e8a;--fg:#c8cce0;--card:#1a1d2a;
+    --blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;
+    --mono:'SF Mono','Fira Code',ui-monospace,monospace;
+    --sans:system-ui,-apple-system,sans-serif;
+  }
+  @media(prefers-color-scheme:light){:root{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;}}
+  :root[data-theme=light]{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;}
+  :root[data-theme=dark]{--bg:#0f1117;--surface:#1a1d2a;--border:#2a2e42;--text:#c8cce0;--dim:#666e8a;--fg:#c8cce0;--card:#1a1d2a;--blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;}
+
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:16px 10px 60px;}
+
+  /* ── Header ── */
+  .page-head{display:flex;align-items:center;justify-content:space-between;
+    padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:0;flex-wrap:wrap;gap:8px;}
+  .head-left{display:flex;align-items:center;gap:12px;}
+  .head-right{display:flex;align-items:center;gap:8px;}
+  h1{font-family:var(--mono);font-size:15px;font-weight:700;letter-spacing:-.02em;}
+  .conn-pill{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:20px;
+    border:1px solid;display:flex;align-items:center;gap:6px;}
+  .conn-pill.connected{border-color:var(--green);color:var(--green);}
+  .conn-pill.disconnected{border-color:var(--dim);color:var(--dim);}
+  .conn-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .conn-pill.connected .conn-dot{animation:blink 2.4s ease-in-out infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ── Tab nav ── */
+  .tab-nav{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;}
+  .tab-btn{font-family:var(--mono);font-size:12px;padding:10px 18px;background:none;
+    border:none;border-bottom:2px solid transparent;color:var(--dim);
+    cursor:pointer;margin-bottom:-1px;transition:color .12s,border-color .12s;}
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  /* ── Generic card ── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:7px;
+    padding:16px 18px;margin-bottom:14px;}
+  h2{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:12px;}
+
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+  .row:last-child{margin-bottom:0;}
+  button{font-family:var(--mono);font-size:12px;padding:5px 12px;background:var(--surface);
+    border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;
+    transition:border-color .12s,color .12s;user-select:none;}
+  button:hover:not(:disabled){border-color:var(--blue);color:var(--blue);}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff;}
+  button.primary:hover{opacity:.88;color:#fff;}
+  button:disabled{opacity:.35;cursor:default;}
+  .status{font-family:var(--mono);font-size:12px;}
+  .status.ok{color:var(--green);}.status.err{color:var(--red);}.status.dim{color:var(--dim);}
+  input[type=number],input[type=text]{font-family:var(--mono);font-size:13px;width:64px;
+    background:var(--bg);border:1px solid var(--border);border-radius:4px;
+    color:var(--text);padding:5px 8px;outline:none;}
+  input:focus{border-color:var(--blue);}
+
+  /* ── CDC log ── */
+  .log{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--border);
+    border-radius:4px;padding:8px 10px;min-height:72px;max-height:160px;overflow-y:auto;
+    white-space:pre-wrap;word-break:break-all;margin-top:8px;line-height:1.7;}
+  .rx{color:var(--green);}.tx{color:var(--blue);}.info{color:var(--dim);}.err{color:var(--red);}
+
+  /* ── Checklist ── */
+  .checklist{list-style:none;}
+  .checklist li{font-size:13px;padding:5px 0;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;}
+  .checklist li:last-child{border-bottom:none;}
+  .ck{font-family:var(--mono);font-size:12px;width:14px;flex-shrink:0;text-align:center;}
+  .ok .ck{color:var(--green);}.fail .ck{color:var(--red);}.pend .ck{color:var(--dim);}
+
+  /* ── MIDI list ── */
+  .midi-entry{font-family:var(--mono);font-size:12px;color:var(--dim);padding:3px 0;
+    display:flex;gap:8px;align-items:center;}
+  .midi-entry.found{color:var(--green);}
+  .midi-badge{background:color-mix(in srgb,var(--green) 15%,transparent);
+    border:1px solid color-mix(in srgb,var(--green) 35%,transparent);
+    color:var(--green);font-size:10px;padding:1px 5px;border-radius:3px;}
+
+  /* ── Transport + slots toolbar ── */
+  .toolbars{display:flex;flex-direction:column;gap:0;padding-bottom:10px;
+    border-bottom:1px solid var(--border);margin-bottom:14px;}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;}
+  .toolbar-discover{border-top:1px solid var(--border);}
+  .toolbar-discover .toolbar-label{color:var(--teal);}
+  .toolbar-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+  .toolbar-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--dim);}
+  .transport-btn{font-family:var(--mono);font-size:12px;padding:4px 10px;
+    background:var(--surface);border:1px solid var(--border);border-radius:4px;
+    color:var(--dim);cursor:pointer;}
+  .transport-btn:hover{border-color:var(--blue);color:var(--blue);}
+  .transport-btn.active{border-color:var(--blue);color:var(--blue);
+    background:color-mix(in srgb,var(--blue) 15%,var(--surface));}
+  .slot-btn{font-family:var(--mono);font-size:11px;padding:4px 10px;min-width:32px;
+    background:var(--surface);border:1px solid var(--border);border-radius:4px;
+    color:var(--dim);cursor:pointer;text-align:center;}
+  .slot-btn:hover{border-color:var(--blue);color:var(--blue);}
+  .slot-btn.used{border-color:color-mix(in srgb,var(--green) 60%,var(--border));color:var(--green);}
+  .slot-btn.last-used{background:color-mix(in srgb,var(--amber) 14%,transparent);box-shadow:inset 0 -2px 0 var(--amber);}
+  .slot-hint{font-family:var(--mono);font-size:10px;color:var(--dim);}
+  .slot-status{font-family:var(--mono);font-size:11px;color:var(--green);margin-left:auto;}
+
+  /* ── Phase Setup panel ── */
+  .phase-panel{background:var(--surface);border:1px solid var(--border);
+    border-radius:6px;margin-bottom:14px;overflow:hidden;}
+  .phase-panel-inner{padding:12px 16px;}
+  .phase-title{font-family:var(--mono);font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--text);display:block;
+    margin-bottom:4px;}
+  .phase-desc{font-family:var(--mono);font-size:10px;color:var(--dim);display:block;
+    margin-bottom:12px;line-height:1.5;}
+  .phase-presets{display:flex;flex-direction:column;gap:6px;}
+  .phase-preset-row{display:flex;align-items:center;gap:12px;
+    padding:6px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--border);}
+  .phase-lengths{font-family:var(--mono);font-size:12px;color:var(--text);flex:1;}
+  .phase-lcm{font-family:var(--mono);font-size:10px;color:var(--dim);
+    white-space:nowrap;}
+  .phase-apply-btn{font-family:var(--mono);font-size:11px;padding:3px 10px;
+    background:var(--surface);border:1px solid var(--border);border-radius:4px;
+    color:var(--dim);cursor:pointer;white-space:nowrap;}
+  .phase-apply-btn:hover{border-color:var(--green);color:var(--green);}
+
+  /* ── Editor header (tempo / clock / status) ── */
+  .editor-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;}
+  .editor-header label{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .ctrl-group{display:flex;align-items:center;gap:6px;}
+  select{font-family:var(--mono);font-size:12px;background:var(--bg);
+    border:1px solid var(--border);border-radius:4px;color:var(--text);
+    padding:4px 6px;cursor:pointer;outline:none;}
+  select:focus{border-color:var(--blue);}
+
+  /* ── Track block ── */
+  .track-block{margin-bottom:24px;transition:opacity .22s,transform .22s;}
+  .track-block:last-child{margin-bottom:0;}
+  .track-block.entering{opacity:0;transform:translateY(-8px);}
+  .track-block.leaving{opacity:0;transform:translateY(-8px);pointer-events:none;}
+  .track-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+  .track-name{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text);}
+  .track-badge{font-family:var(--mono);font-size:10px;padding:1px 6px;border-radius:3px;
+    border:1px solid var(--border);color:var(--dim);}
+  .track-badge.cv{border-color:color-mix(in srgb,var(--blue) 50%,var(--border));color:var(--blue);}
+  .midi-toggle{font-family:var(--mono);font-size:11px;padding:2px 8px;
+    border:1px solid var(--border);border-radius:3px;cursor:pointer;background:transparent;color:var(--dim);}
+  .midi-toggle.on{border-color:var(--green);color:var(--green);}
+  .midi-toggle:hover{border-color:var(--blue);color:var(--blue);}
+
+  /* ── Step ribbon — fixed-width, no scroll ── */
+  .ribbon{display:grid;gap:2px;user-select:none;cursor:crosshair;}
+  .step-cell{
+    position:relative;height:58px;min-width:0;overflow:hidden;
+    border:1px solid var(--border);border-radius:3px;background:var(--bg);
+    cursor:crosshair;touch-action:none;transition:border-color .1s;
+  }
+  .step-cell:hover{border-color:color-mix(in srgb,var(--blue) 60%,var(--border));}
+  .step-cell.rest{opacity:.4;}
+  .step-cell.playing{
+    border-color:var(--blue)!important;
+    box-shadow:0 0 0 1px var(--blue);
+    background:color-mix(in srgb,var(--blue) 18%,var(--surface));
+  }
+  .step-cell.bar-start{border-left-color:var(--dim);border-left-width:2px;}
+  .step-cell.bar-start:not(:first-child){margin-left:5px;}
+  .pitch-bar{
+    position:absolute;bottom:0;left:0;right:0;
+    background:color-mix(in srgb,var(--blue) 55%,transparent);
+    border-radius:2px 2px 0 0;min-height:3px;
+    pointer-events:none;transition:height .04s;
+  }
+  .step-cell.playing .pitch-bar{background:var(--blue);}
+  .step-note{
+    position:absolute;top:2px;left:0;right:0;
+    font-family:var(--mono);font-size:9px;color:var(--text);
+    text-align:center;overflow:hidden;white-space:nowrap;
+    pointer-events:none;line-height:1;
+  }
+  .step-accent-dot{
+    position:absolute;top:2px;right:3px;width:5px;height:5px;
+    border-radius:50%;background:var(--red);pointer-events:none;display:none;
+  }
+  .step-cell.accented .step-accent-dot{display:block;}
+  .step-indicator-row{
+    position:absolute;bottom:2px;left:2px;right:2px;
+    display:flex;justify-content:space-between;align-items:center;
+    pointer-events:none;line-height:1;
+  }
+  .step-tie{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--bg);background:var(--teal);border-radius:3px;padding:0 2px;line-height:1.4;}
+  .step-ratchet{font-family:var(--mono);font-size:9px;font-weight:700;color:var(--bg);background:var(--amber);border-radius:3px;padding:0 2px;line-height:1.4;}
+  .step-cell.tied{border-color:color-mix(in srgb,var(--teal) 45%,var(--border));}
+  .step-cell.tied .pitch-bar{background:color-mix(in srgb,var(--teal) 65%,transparent);}
+  .step-cell.playing.tied .pitch-bar{background:var(--teal);}
+  .step-cell.accented .pitch-bar{background:color-mix(in srgb,var(--blue) 60%,var(--red));}
+  .step-cell.playing.accented .pitch-bar{background:color-mix(in srgb,var(--blue) 50%,var(--red));}
+  .step-cell.tied.accented .pitch-bar{background:color-mix(in srgb,var(--teal) 60%,var(--red));}
+
+  /* ── Gate strip ── */
+  .gate-strip{display:grid;gap:2px;height:28px;margin-top:2px;user-select:none;touch-action:none;}
+  .gate-seg{
+    position:relative;min-width:0;
+    background:var(--bg);border:1px solid var(--border);border-radius:1px;
+    overflow:hidden;cursor:row-resize;
+  }
+  .gate-seg.bar-start{border-left-color:var(--dim);border-left-width:2px;}
+  .gate-seg.bar-start:not(:first-child){margin-left:5px;}
+  .gate-seg-fill{
+    position:absolute;bottom:0;left:0;right:0;
+    background:var(--green);opacity:.55;pointer-events:none;
+  }
+  .gate-seg-label{
+    position:absolute;top:1px;left:0;right:0;text-align:center;
+    font-family:var(--mono);font-size:9px;color:var(--text);
+    pointer-events:none;line-height:1;overflow:hidden;
+  }
+
+  /* ── Probability strip ── */
+  .prob-strip{display:grid;gap:2px;height:28px;margin-top:2px;user-select:none;touch-action:none;}
+  .prob-seg{
+    position:relative;min-width:0;
+    background:var(--bg);border:1px solid var(--border);border-radius:1px;
+    overflow:hidden;cursor:row-resize;
+  }
+  .prob-seg.bar-start{border-left-color:var(--dim);border-left-width:2px;}
+  .prob-seg.bar-start:not(:first-child){margin-left:5px;}
+  .prob-seg-fill{
+    position:absolute;bottom:0;left:0;right:0;
+    background:var(--amber);opacity:.45;pointer-events:none;
+  }
+  .prob-seg-label{
+    position:absolute;top:1px;left:0;right:0;text-align:center;
+    font-family:var(--mono);font-size:9px;color:var(--text);
+    pointer-events:none;line-height:1;overflow:hidden;
+  }
+
+  /* ── Ribbon colour key ── */
+  .ribbon-key{
+    display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;
+    padding:10px 4px 4px;border-top:1px solid var(--border);margin-top:14px;
+    font-family:var(--mono);font-size:10px;color:var(--dim);
+  }
+  .rk-item{display:flex;align-items:center;gap:4px;}
+  .rk-bar{display:inline-block;width:10px;height:13px;border-radius:2px;}
+  .rk-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);}
+  .rk-label{display:inline-block;font-size:10px;color:var(--amber);}
+  .rk-strip{display:inline-block;width:18px;height:6px;border-radius:1px;opacity:.65;}
+
+  /* ── Track footer — tabbed control groups ── */
+  .track-footer{margin-top:8px;}
+  .footer-tabs{display:flex;gap:1px;margin-bottom:-1px;position:relative;z-index:1;}
+  .footer-tab-btn{font-family:var(--mono);font-size:10px;padding:3px 10px;border:1px solid var(--border);
+    background:var(--bg);color:var(--dim);cursor:pointer;border-radius:3px 3px 0 0;
+    letter-spacing:.03em;text-transform:uppercase;}
+  .footer-tab-btn.active{background:var(--card);color:var(--fg);border-color:var(--border);
+    border-bottom-color:var(--card);}
+  .footer-tab-panels{border:1px solid var(--border);border-radius:3px;
+    padding:6px 10px;background:var(--card);}
+  .footer-panel{display:none;align-items:center;gap:12px;flex-wrap:wrap;row-gap:5px;}
+  .footer-panel.active{display:flex;}
+  .ctrl-small{display:flex;align-items:center;gap:5px;}
+  .ctrl-small label{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .ctrl-small input[type=number]{width:48px;font-size:12px;padding:3px 6px;}
+  .ctrl-small button{padding:3px 8px;font-size:12px;}
+  .ctrl-small select{font-size:11px;}
+  .footer-sep{width:1px;height:14px;background:var(--border);}
+
+  /* ── Mute / Solo ── */
+  .remove-btn{font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid var(--border);
+    background:none;color:var(--dim);cursor:pointer;border-radius:3px;}
+  .remove-btn:hover:not(:disabled){border-color:#e05252;color:#e05252;}
+  .remove-btn:disabled{opacity:.35;cursor:default;}
+  .global-mute-btn{font-family:var(--mono);font-size:12px;padding:4px 10px;border:1px solid var(--border);
+    background:none;color:var(--fg);cursor:pointer;border-radius:3px;}
+  .global-mute-btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber);}
+  .global-mute-btn.active{border-color:var(--amber)!important;color:var(--amber)!important;}
+  .global-mute-btn:disabled{opacity:.35;cursor:default;}
+  .add-track-btn{font-family:var(--mono);font-size:12px;padding:4px 10px;border:1px solid var(--border);
+    background:none;color:var(--fg);cursor:pointer;border-radius:3px;}
+  .add-track-btn:hover:not(:disabled){border-color:var(--green);color:var(--green);}
+  .add-track-btn:disabled{opacity:.35;cursor:default;}
+  .gen-btn{font-family:var(--mono);font-size:12px;padding:4px 10px;border:1px solid var(--border);
+    background:none;color:var(--fg);cursor:pointer;border-radius:3px;}
+  .gen-btn:hover:not(:disabled){border-color:color-mix(in srgb,var(--green) 80%,var(--border));color:var(--green);}
+  .gen-btn.active{border-color:var(--green)!important;color:var(--green)!important;}
+  .gen-btn.latch-unsaved{border-color:var(--amber)!important;color:var(--amber)!important;}
+  .gen-btn:disabled{opacity:.35;cursor:default;}
+  .mute-btn,.solo-btn{font-family:var(--mono);font-size:11px;padding:2px 8px;
+    border:1px solid var(--border);border-radius:3px;cursor:pointer;background:transparent;color:var(--dim);}
+  .mute-btn.active{border-color:var(--amber)!important;color:var(--amber)!important;}
+  .solo-btn.active{border-color:var(--green)!important;color:var(--green)!important;}
+  .mute-btn:hover,.solo-btn:hover{border-color:var(--blue);color:var(--blue);}
+  .track-block.silenced .ribbon,.track-block.silenced .gate-strip,.track-block.silenced .prob-strip{opacity:.28;pointer-events:none;}
+  .track-block.silenced .track-name{color:var(--dim);}
+  /* Panel focus — amber, distinct from blue playhead */
+  .track-block.panel-focused{outline:3px solid var(--amber);outline-offset:3px;border-radius:4px;}
+  .step-cell.panel-focused{box-shadow:inset 0 0 0 2px var(--amber);}
+  .step-cell.partial-bar{border-color:color-mix(in srgb,var(--red) 55%,var(--border));}
+
+  /* ── Help panel ── */
+  .track-help{display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+    margin-top:4px;padding:3px 8px;border-radius:3px;
+    background:color-mix(in srgb,var(--border) 40%,transparent);
+    font-family:var(--mono);font-size:9px;color:var(--dim);line-height:1.6;}
+  .kbd{display:inline-flex;align-items:center;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:3px;padding:1px 5px;font-size:9px;letter-spacing:.01em;
+    white-space:nowrap;color:var(--text);}
+  .track-help-sep{width:1px;height:10px;background:var(--border);flex-shrink:0;margin:0 2px;}
+
+  /* ── Documentation tab ── */
+  .doc-section{margin-bottom:24px;}
+  .doc-section h3{font-family:var(--mono);font-size:11px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--blue);
+    margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .doc-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;margin-bottom:8px;}
+  .doc-table th{text-align:left;padding:5px 10px;font-size:10px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+    border-bottom:1px solid var(--border);}
+  .doc-table td{padding:5px 10px;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent);
+    vertical-align:top;}
+  .doc-table tr:last-child td{border-bottom:none;}
+  .doc-table td:first-child{white-space:nowrap;color:var(--text);}
+  .doc-table td:last-child{color:var(--dim);}
+  .doc-note{font-family:var(--mono);font-size:11px;color:var(--dim);
+    padding:8px 12px;background:color-mix(in srgb,var(--border) 30%,transparent);
+    border-radius:4px;margin-bottom:8px;line-height:1.6;}
+  /* ── Docs table of contents ── */
+  .doc-toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+    gap:3px 16px;margin-bottom:24px;padding-bottom:20px;
+    border-bottom:1px solid var(--border);}
+  .doc-toc-group{display:contents;}
+  .doc-toc-label{font-family:var(--mono);font-size:9px;font-weight:700;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+    grid-column:1/-1;margin-top:10px;margin-bottom:2px;}
+  .doc-toc-label:first-child{margin-top:0;}
+  .doc-toc a{font-family:var(--mono);font-size:11px;color:var(--dim);
+    text-decoration:none;padding:2px 0;display:block;
+    border-left:2px solid transparent;padding-left:8px;}
+  .doc-toc a:hover{color:var(--blue);border-left-color:var(--blue);}
+
+  /* ── Accent flash ── */
+  @keyframes accent-flash{
+    0%{box-shadow:0 0 0 2px var(--red),0 0 12px color-mix(in srgb,var(--red) 60%,transparent);border-color:var(--red);}
+    100%{box-shadow:none;}
+  }
+  .flash-accent{animation:accent-flash .28s ease-out forwards;}
+
+  /* ── Diagnostics ── */
+  .diag-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;}
+  @media(max-width:500px){.diag-grid{grid-template-columns:1fr 1fr;}}
+  .tile{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;}
+  .tile .tl{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px;}
+  .tile .tv{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.2;}
+  .tile .ts{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px;}
+  .tile.t-ok{border-color:color-mix(in srgb,var(--green) 40%,var(--border));}.tile.t-ok .tv{color:var(--green);}
+  .tile.t-warn{border-color:color-mix(in srgb,var(--amber) 40%,var(--border));}.tile.t-warn .tv{color:var(--amber);}
+  .tile.t-err{border-color:color-mix(in srgb,var(--red) 40%,var(--border));}.tile.t-err .tv{color:var(--red);}
+  .assert-list{list-style:none;border-top:1px solid var(--border);padding-top:10px;}
+  .assert-list li{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px;}
+  .assert-list li:last-child{border-bottom:none;}
+  .ai{font-family:var(--mono);font-size:12px;width:14px;flex-shrink:0;}
+  .ai-ok{color:var(--green);}.ai-warn{color:var(--amber);}.ai-err{color:var(--red);}.ai-pend{color:var(--dim);}
+  .ad{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .poll-ts{font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:auto;}
+</style>
 </head>
 <body>
 
-<h1>StepBridge</h1>
-
-<div class="tabBar">
-  <button class="tabBtn active" data-tab="sequencer" onclick="ShowTab('sequencer')">Sequencer</button>
-  <button class="tabBtn" data-tab="userdocs" onclick="ShowTab('userdocs')">User Guide</button>
-  <button class="tabBtn" data-tab="techdocs" onclick="ShowTab('techdocs')">Technical Docs</button>
-</div>
-
-<div id="tab-sequencer" class="tabPane active">
-
-  <div class="toolbar">
-    <span id="connectedStatus">Connecting...</span>
-    <button onclick="ReacquireMidiAccess()">Reconnect</button>
-    <button onclick="RefreshAll()">Refresh</button>
-    <button id="globalLockBtn" onclick="ToggleGlobalLock()">Lock All Editing</button>
-    <button id="globalMuteBtn" onclick="ToggleGlobalMute()">Silence All</button>
-    <span class="transportGroup">
-      <button class="transportBtn" onclick="SetTransport(0)">Stop</button>
-      <button class="transportBtn" onclick="SetTransport(1)">Pause</button>
-      <button class="transportBtn active" onclick="SetTransport(2)">Play</button>
-      <span id="transportLabel">Playing</span>
-    </span>
-    <span class="clockSourceGroup">
-      Clock:
-      <button class="clockSourceBtn active" onclick="SetClockSource(0)">Internal</button>
-      <button class="clockSourceBtn" onclick="SetClockSource(1)">Ext Pulse</button>
-      <button class="clockSourceBtn" onclick="SetClockSource(2)">MIDI Clock</button>
-      <span id="clockSourceLabel">Internal</span>
-      <span id="tempoLabel" class="tempoLabel">-- BPM</span>
-    </span>
-    <span id="panelStateLabel" class="panelStateLabel">Panel: --</span>
-    <label><input type="checkbox" id="autoScrollToFocus"> Auto-scroll to focus</label>
-  </div>
-
-  <div class="toolbar patternBankRow">
-    Save to: <span id="saveSlots"></span>
-    Load from: <span id="loadSlots"></span>
-    <span id="patternBankStatus" class="patternBankStatus"></span>
-  </div>
-
-  <div class="toolbar">
-    Tracks: <span id="numTracksLabel">2</span> / <span id="maxTracksLabel">8</span>
-    <button id="addTrackBtn" onclick="AddTrackUI()">+ Add Track</button>
-    <button id="removeTrackBtn" onclick="RemoveTrackUI()">- Remove Track</button>
-  </div>
-
-  <div class="toolbar">
-    CV routing —
-    Track (Down page Y):
-    <select id="cvTrackRoute" onchange="SetCVRouting()">
-      <option value="0">Off (Y knob)</option>
-      <option value="1">CV1</option>
-      <option value="2">CV2</option>
-    </select>
-    Step (Middle page X):
-    <select id="cvStepRoute" onchange="SetCVRouting()">
-      <option value="0">Off (X knob)</option>
-      <option value="1">CV1</option>
-      <option value="2">CV2</option>
-    </select>
-  </div>
-  <div class="toolbar" id="cvCalRow" style="font-size:0.85em; gap:8px">
-    CV calibration —
-    Track: <span id="cvTrackCalLabel">uncalibrated (full range)</span>
-    <button onclick="SendSysEx(MSG_SET_CV_ROUTING_CAL,[0, 0,0, 0x7F,0x1F])" title="Reset track CV calibration to full range">Reset</button>
-    Step: <span id="cvStepCalLabel">uncalibrated (full range)</span>
-    <button onclick="SendSysEx(MSG_SET_CV_ROUTING_CAL,[1, 0,0, 0x7F,0x1F])" title="Reset step CV calibration to full range">Reset</button>
-    <span class="hint">To calibrate: set CV to minimum → note the raw CvToKnob value → set to maximum → send MSG_SET_CV_ROUTING_CAL via custom SysEx. A guided calibration UI is planned.</span>
-  </div>
-
-  <div id="tracksContainer"></div>
-
-  <p class="hint">
-    Click/drag a step to set its pitch. <b>Shift</b>=rest, <b>Ctrl/Cmd</b>=tie, <b>Alt</b>=accent (click or sweep across several steps).
-    Scroll a step to nudge pitch; <b>Shift+scroll</b> sets ratchet count (1-8). Drag/scroll the gate-length strip below each track to set how long each step's gate stays open.
-  </p>
-
-  <h3>Connection diagnostics</h3>
-  <div id="connDiag" class="diagBox"></div>
-  <div id="debugLog" class="debugLog"></div>
-
-  <h3>
-    Diagnostics event log
-    <button id="diagLogToggle" onclick="ToggleDiagLog()">Show</button>
-  </h3>
-  <div id="diagLogPanel" class="diagLogPanel" style="display:none">
-    <div class="diagLogToolbar">
-      <label><input type="checkbox" class="diagFilter" value="state" checked onchange="RenderDiagLog()"> State</label>
-      <label><input type="checkbox" class="diagFilter" value="hardware" checked onchange="RenderDiagLog()"> Hardware</label>
-      <label><input type="checkbox" class="diagFilter" value="midi" checked onchange="RenderDiagLog()"> MIDI</label>
-      <label><input type="checkbox" class="diagFilter" value="sysex" checked onchange="RenderDiagLog()"> SysEx</label>
-      <button onclick="RequestDiagEvents()">Refresh</button>
-      <button onclick="ResyncDiagLog()" title="Clears the log and refetches from the oldest still-buffered event - use if the log seems stuck or shows impossible values">Resync</button>
-      <button id="diagLogCopyBtn" onclick="CopyDiagLog()" title="Copies the currently-filtered rows as text - takes a snapshot, so it works even though the table keeps repainting">Copy</button>
-      <label><input type="checkbox" id="diagAutoSync" checked onchange="ToggleDiagAutoSync()"> Auto-sync</label>
-      <span id="diagLogSynced" class="diagLogSynced">never synced</span>
+<!-- ── Header ── -->
+<div class="page-head">
+  <div class="head-left">
+    <h1>StepBridge 2</h1>
+    <div class="conn-pill disconnected" id="connPill">
+      <span class="conn-dot"></span>
+      <span id="connLabel">disconnected</span>
     </div>
-    <table id="diagLogTable" class="diagLogTable">
-      <thead><tr><th>seq</th><th>time</th><th>type</th><th>detail</th></tr></thead>
-      <tbody id="diagLogBody"></tbody>
+  </div>
+  <div class="head-right">
+    <button id="btnTheme" onclick="cycleTheme()" title="Toggle light/dark theme" style="padding:5px 10px;font-size:13px;">☀</button>
+    <button id="btnConnect" class="primary" onclick="connectSerial()">Connect</button>
+    <button id="btnDisconnect" disabled onclick="disconnectSerial()">Disconnect</button>
+  </div>
+</div>
+
+<!-- ── Tab nav ── -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="seq" onclick="showTab('seq')">Sequencer</button>
+  <button class="tab-btn" data-tab="docs" onclick="showTab('docs')">Documentation</button>
+  <button class="tab-btn" data-tab="diag" onclick="showTab('diag')">Diagnostics</button>
+</nav>
+
+<!-- ══ Sequencer tab ══ -->
+<div id="tab-seq" class="tab-panel active">
+  <div class="card">
+
+    <!-- Toolbar: two rows stacked -->
+    <div class="toolbars">
+
+      <!-- Row 1: Transport · Slots · Tracks -->
+      <div class="toolbar">
+        <span class="toolbar-label">Transport</span>
+        <button class="transport-btn active" id="btnPlay" disabled onclick="setTransport(0)">▶ Play</button>
+        <button class="transport-btn" id="btnStop" disabled onclick="setTransport(1)">■ Stop</button>
+        <button class="transport-btn" id="btnFromStart" disabled onclick="setTransport(2)">▶ from start</button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-label">Slots</span>
+        <button class="slot-btn" id="slot-0" disabled onclick="slotClick(0,event)" title="Shift+click to save">1</button>
+        <button class="slot-btn" id="slot-1" disabled onclick="slotClick(1,event)" title="Shift+click to save">2</button>
+        <button class="slot-btn" id="slot-2" disabled onclick="slotClick(2,event)" title="Shift+click to save">3</button>
+        <button class="slot-btn" id="slot-3" disabled onclick="slotClick(3,event)" title="Shift+click to save">4</button>
+        <button class="slot-btn" id="slot-4" disabled onclick="slotClick(4,event)" title="Shift+click to save">5</button>
+        <button class="slot-btn" id="slot-5" disabled onclick="slotClick(5,event)" title="Shift+click to save">6</button>
+        <button class="slot-btn" id="slot-6" disabled onclick="slotClick(6,event)" title="Shift+click to save">7</button>
+        <button class="slot-btn" id="slot-7" disabled onclick="slotClick(7,event)" title="Shift+click to save">8</button>
+        <span class="slot-hint">shift+click=save</span>
+        <span class="slot-status" id="slotStatus"></span>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-label">Tracks</span>
+        <button class="global-mute-btn" id="btnGlobalMute" disabled onclick="toggleGlobalMute()">⊘ Mute All</button>
+        <button class="add-track-btn"   id="btnAddTrack"   disabled onclick="addTrack()">+ Add Track</button>
+      </div>
+
+      <!-- Row 2: Music discovery -->
+      <div class="toolbar toolbar-discover">
+        <span class="toolbar-label">Randomize</span>
+        <select id="globalRandStyle" style="font-size:11px;padding:1px 2px" title="Markov pitch style for all-track randomize">
+          <option value="0">Melodic</option>
+          <option value="1">Intervallic</option>
+          <option value="2">Floating</option>
+        </select>
+        <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize track lengths">
+          <input type="checkbox" id="globalRandVaryLen" style="margin:0"> vary len
+        </label>
+        <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize time signatures (steps per bar)">
+          <input type="checkbox" id="globalRandVaryMeter" style="margin:0"> vary meter
+        </label>
+        <button class="gen-btn" id="btnGlobalRand" disabled onclick="globalRandomize()" title="Randomize all tracks with coordinated rhythmic structure (Markov chain, complementary beat roles). Uses the style and structure settings above — ignores per-track Generative tab settings.">⚄ All Tracks</button>
+        <div class="toolbar-sep"></div>
+        <span class="toolbar-label">Phase</span>
+        <button class="gen-btn" id="btnPhaseSetup" disabled onclick="togglePhasePanel()" title="Phase Setup: set coprime track lengths for Eno-style phasing">⇌ Phase Setup</button>
+      </div>
+
+    </div>
+
+    <!-- Phase Setup panel (hidden by default) -->
+    <div id="phasePanel" class="phase-panel" style="display:none">
+      <div class="phase-panel-inner">
+        <span class="phase-title">Phase Setup</span>
+        <span class="phase-desc">Set coprime track lengths so tracks drift in and out of phase (Eno-style). Higher LCM = more complex evolution before reset.</span>
+        <div id="phasePresets" class="phase-presets"></div>
+      </div>
+    </div>
+
+    <!-- Tempo / Clock -->
+    <div class="editor-header">
+      <div class="ctrl-group">
+        <label>Tempo</label>
+        <input type="number" id="tempoInput" min="20" max="300" value="120"
+               onchange="sendTempo(this.value)" style="width:64px">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">BPM</span>
+      </div>
+      <div class="ctrl-group">
+        <label>Clock</label>
+        <select id="clockSourceSel" onchange="setClockSource(this.value)">
+          <option value="0">Internal</option>
+          <option value="1">Ext Pulse</option>
+        </select>
+      </div>
+      <span id="editorStatus" style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-left:auto">—</span>
+    </div>
+
+    <!-- Tracks -->
+    <div id="tracksContainer">
+      <p style="font-family:var(--mono);font-size:12px;color:var(--dim)">Connect to load pattern…</p>
+    </div>
+
+    <!-- Colour key -->
+    <div class="ribbon-key">
+      <span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--blue) 55%,transparent)"></span>Note</span>
+      <span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--teal) 65%,transparent);border:1px solid color-mix(in srgb,var(--teal) 45%,var(--border))"></span>Tied</span>
+      <span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--blue) 60%,var(--red))"></span>Accent</span>
+      <span class="rk-item"><span class="step-ratchet" style="font-size:9px">×N</span>Ratchet</span>
+      <span class="rk-item"><span class="rk-strip" style="background:var(--green)"></span>Gate length</span>
+      <span class="rk-item"><span class="rk-strip" style="background:var(--amber)"></span>Probability</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Documentation tab ══ -->
+<div id="tab-docs" class="tab-panel">
+  <div class="card">
+
+    <h3 style="font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--blue);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)">Contents</h3>
+    <nav class="doc-toc" aria-label="Contents">
+      <span class="doc-toc-label">Editing</span>
+      <a href="#doc-ribbon">Step Ribbon</a>
+      <a href="#doc-gate">Gate Strip</a>
+      <a href="#doc-key">Colour &amp; Symbol Key</a>
+      <span class="doc-toc-label">Track Controls</span>
+      <a href="#doc-header">Track Header</a>
+      <a href="#doc-timing">Footer — Timing</a>
+      <a href="#doc-playback">Footer — Playback (Arp)</a>
+      <a href="#doc-output">Footer — Output (Glide · Accent CV)</a>
+      <a href="#doc-pitch">Footer — Pitch</a>
+      <a href="#doc-midi">Footer — MIDI</a>
+      <span class="doc-toc-label">Generative</span>
+      <a href="#doc-rand-single">Randomize — Single Track</a>
+      <a href="#doc-rand-global">Randomize — Global</a>
+      <a href="#doc-mutation">Mutation (Drift)</a>
+      <a href="#doc-phase">Phase Setup</a>
+      <span class="doc-toc-label">Reference</span>
+      <a href="#doc-toolbar">Toolbar</a>
+      <a href="#doc-protocol">Protocol</a>
+      <a href="#doc-hardware">Hardware</a>
+    </nav>
+
+    <div class="doc-section">
+      <h3 id="doc-ribbon">Step Ribbon — Editing Gestures</h3>
+      <div class="doc-note">The ribbon is always live — playhead and gate animations continue while you edit. The help bar beneath each track shows these shortcuts at a glance.</div>
+      <table class="doc-table">
+        <tr><th>Gesture</th><th>Effect</th></tr>
+        <tr><td>Click</td><td>Toggle rest/active. Restores the last pitch if the step was a rest.</td></tr>
+        <tr><td>Ctrl+click (Cmd on Mac)</td><td>Toggle tie on that step (auto-clears ratchet to 1). Disabled on rest steps.</td></tr>
+        <tr><td>Alt+click (Option on Mac)</td><td>Toggle accent on that step. Disabled on rest steps.</td></tr>
+        <tr><td>Drag horizontally</td><td>Paint note heights across cells. Intermediate cells skipped by fast movement are filled automatically.</td></tr>
+        <tr><td>Drag vertically (↕)</td><td>Pitch-drag: adjust the note on the starting cell. Requires a clear vertical gesture (vertical movement must dominate) to avoid triggering on slow horizontal sweeps.</td></tr>
+        <tr><td>Scroll wheel</td><td>Nudge note ±1 semitone (or ±1 scale degree when Draw Scale is active).</td></tr>
+        <tr><td>Shift + scroll</td><td>Adjust ratchet count ±1 (1–8). Auto-clears tie.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-gate">Gate Strip</h3>
+      <table class="doc-table">
+        <tr><th>Gesture</th><th>Effect</th></tr>
+        <tr><td>Drag ↕</td><td>Set gate length for that step (1–100%). Drag up = longer.</td></tr>
+        <tr><td>Scroll wheel</td><td>Nudge gate length ±5%.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-key">Colour &amp; Symbol Key</h3>
+      <div class="doc-note">The same key appears at the bottom of the editor. Each step cell in the pitch ribbon is colour-coded by its state; the two thin strips below each cell show gate length and probability independently.</div>
+      <table class="doc-table">
+        <tr><th>Symbol</th><th>Meaning</th></tr>
+        <tr>
+          <td><span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--blue) 55%,transparent)"></span>Blue bar</span></td>
+          <td>A normal sounding step. Height of the bar reflects the pitch — taller = higher note, shorter = lower note.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--teal) 65%,transparent);border:1px solid color-mix(in srgb,var(--teal) 45%,var(--border))"></span>Teal bar</span></td>
+          <td>Tied step — extends the gate of the preceding step rather than retriggering. The teal cell has no gate strip of its own because its gate is controlled by the originating step.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item"><span class="rk-bar" style="background:color-mix(in srgb,var(--blue) 60%,var(--red))"></span>Blue-red bar</span></td>
+          <td>Accented step — MIDI note-on is sent at higher velocity (127 vs ~96). On CV/Pulse tracks the pulse output is unchanged (Pulse is binary); accent is a MIDI-only effect.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item" style="color:var(--dim)">Empty cell</span></td>
+          <td>Rest — no gate, no MIDI note-on. CV holds its last value through the rest.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item"><span class="step-ratchet" style="font-size:9px">×N</span>Amber badge</span></td>
+          <td>Ratchet count — the step fires N times within its slot, each at 1/N of the step duration. Ratchet and tie are mutually exclusive. Visible on notes with ratchetCount ≥ 2.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item"><span class="rk-strip" style="background:var(--green);display:inline-block;width:28px;height:6px;border-radius:1px"></span>Green strip</span></td>
+          <td>Gate length strip — the thin bar below each pitch cell. Fill proportion = gate percentage (1–100%). A full-width strip = 100% gate (legato); a narrow sliver = short staccato gate.</td>
+        </tr>
+        <tr>
+          <td><span class="rk-item"><span class="rk-strip" style="background:var(--amber);display:inline-block;width:28px;height:6px;border-radius:1px"></span>Amber strip</span></td>
+          <td>Probability strip — the thin bar below the gate strip. Fill = step probability (0–7 mapped to 0–100%). A full strip means the step always fires (level 7); shorter strips mean the step fires on a random fraction of playback cycles — level 4 ≈ 57%, level 1 ≈ 14%.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-header">Track Header Controls</h3>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>CV+MIDI / MIDI badge</td><td>Tracks 1–2 output CV pitch + Pulse gate as well as MIDI. Tracks 3–4 are MIDI-only. Structural — not user-editable.</td></tr>
+        <tr><td>MIDI on/off</td><td>Enable or disable USB MIDI note-on/off output for this track. CV/Pulse output is unaffected.</td></tr>
+        <tr><td>Mute</td><td>Silence this track's CV/Pulse and MIDI output. The playhead keeps running — the track is audibly silent but positionally live.</td></tr>
+        <tr><td>Solo</td><td>When any track is soloed, all non-solo tracks act as if muted. Multiple tracks can be soloed simultaneously.</td></tr>
+        <tr><td>Randomize</td><td>Generate a new melodic pattern using the Markov chain algorithm (see Randomize section below). One-level undo is available immediately after.</td></tr>
+        <tr><td>↩ Undo</td><td>Restores this track's pattern to what it was immediately before the last Randomize (single track or global). One level only — the button becomes enabled after any Randomize and disabled after Undo or slot load.</td></tr>
+        <tr><td>Remove</td><td>Remove this track (minimum 1 track remains). Firmware shifts remaining tracks down; track numbering updates automatically.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-timing">Track Footer — Timing Tab</h3>
+      <div class="doc-note">The track footer is tabbed: Timing · Playback · Pitch · MIDI. The active tab persists across state refreshes so it does not reset while editing.</div>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>Length</td><td>Number of active steps (1–64). Steps beyond the current length are hidden but not erased — regrowing the track reveals the unchanged data. Scrollable.</td></tr>
+        <tr><td>Bar (time signature)</td><td>Steps per bar group in Regular mode. Controls where bar-divider lines appear on the ribbon and where the Randomize algorithm places accents. Scrollable. For non-standard meters, switch to Irregular mode (described below).</td></tr>
+        <tr><td>Irregular mode</td><td>When enabled, the time signature becomes an additive group sequence (e.g. 3+3+2 for a 3+3+2 meter). Enter the group sizes in the chips editor. The sequence repeats across the full track length; the final group is truncated if it extends past the end. Randomize and Global Randomize use the irregular bar boundaries when weighting accent positions.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-playback">Track Footer — Playback Tab</h3>
+
+      <h4 style="font-family:var(--mono);font-size:11px;margin:10px 0 6px;color:var(--text)">Arpeggiator</h4>
+      <div class="doc-note">The arpeggiator reorders step playback by pitch rather than position, producing chord-like patterns from the notes already written in the steps. The stored note data is never changed — only the playback order is affected. Rest steps participate as silence in the sequence (or as arp positions when Include Rests is enabled).</div>
+      <table class="doc-table">
+        <tr><th>Mode</th><th>Playback order</th></tr>
+        <tr><td>Off</td><td>Steps play in their written position order (default behaviour).</td></tr>
+        <tr><td>Forward</td><td>All pitched steps sorted lowest to highest note, looping continuously. Identical to playing a rising arpeggio.</td></tr>
+        <tr><td>Reverse</td><td>All pitched steps sorted highest to lowest note, looping continuously.</td></tr>
+        <tr><td>PingPong</td><td>Ascending then descending, endpoints sounding once each: lowest → highest → second-highest → … → second-lowest → lowest → … The turnaround is seamless — no repeated endpoint. For two notes, alternates between them.</td></tr>
+        <tr><td>Random</td><td>A new random permutation of pitched steps on each cycle. Different every repeat, never predictable.</td></tr>
+        <tr><td>Converge</td><td>Pairs the extreme notes inward: lowest, highest, second-lowest, second-highest, third-lowest, … until reaching the middle. On an odd number of steps, the single centre note closes the sequence.</td></tr>
+        <tr><td>Diverge</td><td>The mirror of Converge: starts at the middle and expands outward toward the extremes. On an odd number of steps, the single centre note opens the sequence.</td></tr>
+      </table>
+      <div class="doc-note" style="margin-top:8px"><strong>Include Rests</strong> (Converge and Diverge only): when enabled, rest steps are appended as silent positions after the pitched sequence, so the arp pattern plays its notes then rests before repeating. This adds rhythmic space and makes the pattern length match the full track length instead of only the pitched-step count.</div>
+      <div class="doc-note" style="margin-top:6px">The arpeggiator order is pre-computed whenever notes or track length change, so there is no CPU cost at audio rate. Playhead position in the arp resets to the beginning whenever the transport resets to step 0.</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-output">Track Footer — Output Tab</h3>
+      <h4 style="font-family:var(--mono);font-size:11px;margin:10px 0 6px;color:var(--text)">Glide (Portamento)</h4>
+      <div class="doc-note">Glide is CV-only — MIDI note output always sends discrete integer pitches. Rest steps do not retrigger the slide; the CV holds its last value through rests.</div>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>Glide slider</td><td>CV pitch sweep time in milliseconds (0 = off, instant pitch change). When non-zero the CV voltage slides continuously from the previous pitch to the new one over the specified time.</td></tr>
+        <tr><td>Max (range knob)</td><td>Sets the upper end of the glide slider range. The range is remembered per track across state refreshes.</td></tr>
+      </table>
+
+      <h4 style="font-family:var(--mono);font-size:11px;margin:14px 0 6px;color:var(--text)">Accent CV Output (CV tracks only)</h4>
+      <div class="doc-note">Sends a signal on the Audio L jack (Track 1) or Audio R jack (Track 2) each time an accented step fires. The audio outputs are <strong>AC-coupled</strong>, so a sustained DC signal decays toward 0V at the receiving module — use Spike or Hybrid for reliable transient shapes. Gate mode can work for fast envelopes that respond to the rising edge only.</div>
+      <table class="doc-table">
+        <tr><th>Mode</th><th>Signal shape</th></tr>
+        <tr><td>Off</td><td>No signal output (default). Audio jacks carry no signal from StepBridge.</td></tr>
+        <tr><td>Spike</td><td>Full-scale burst lasting 5 ms at the moment an accented gate opens. The AC coupling naturally produces a sharp positive transient at the destination — ideal for pinging a filter, envelope, or slew with a short impulse.</td></tr>
+        <tr><td>Gate</td><td>Full-scale signal for the entire gate duration of accented steps. The AC coupling causes the signal to droop exponentially back toward 0V during the gate — the time constant depends on the receiving module's input impedance. Useful when the receiver responds to the rising edge.</td></tr>
+        <tr><td>Hybrid</td><td>Spike (5 ms at full scale) followed by a sustained half-level signal for the remainder of the gate. Combines the sharp transient of Spike with a brief hold that can sustain an envelope or VCA through the accented note.</td></tr>
+      </table>
+      <div class="doc-note" style="margin-top:8px">Non-accent steps output 0 V in all modes, so the signal is fully gated. Muted tracks produce no accent output.</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-pitch">Track Footer — Pitch Tab</h3>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>Live Shift</td><td>Non-destructive transposition: −24 to +24 semitones applied at output time (both CV and MIDI). Stored step notes are not changed. Saved to flash with the pattern. Use for real-time key transposition without rewriting the pattern.</td></tr>
+        <tr><td>Draw Scale (key + scale)</td><td>Draw-assist snapping: when enabled, dragging on the ribbon snaps the note to the nearest pitch in the chosen key and scale. Affects only new input — it does not change notes already stored. The scale selector can also be used with Snap ▶ to quantise existing notes.</td></tr>
+        <tr><td>Snap ▶</td><td>One-shot destructive quantise: rewrites every stored non-rest note to the nearest pitch in the Draw Scale key/scale. Reversible only by loading a saved slot (or via ↩ Undo if a Randomize immediately preceded it).</td></tr>
+        <tr><td>Transpose amount + Apply</td><td>Permanently adds the entered semitone offset to every stored non-rest note (clamped 0–126). Resets to 0 after Apply. Distinct from Live Shift: this writes the new pitches back into the pattern.</td></tr>
+      </table>
+      <div class="doc-note" style="margin-top:8px"><strong>Available scales:</strong> Major · Natural Minor · Pentatonic Major · Pentatonic Minor · Chromatic · Harmonic Minor · Melodic Minor · Dorian · Phrygian · Lydian · Mixolydian · Locrian · Blues · Whole Tone · Hungarian Minor · Japanese (in iro). All 16 scales share the same Draw Scale selector and Snap ▶ target.</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-midi">Track Footer — MIDI Tab</h3>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>MIDI Channel</td><td>USB MIDI output channel for this track (1–16). Each track is independently assignable. Defaults to track number (T1 → ch 1, T2 → ch 2, …).</td></tr>
+        <tr><td>MIDI Enable</td><td>Quick toggle for USB MIDI note output from this track. Same as the MIDI on/off button in the track header.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-rand-single">Randomize — Single Track</h3>
+      <div class="doc-note">The Randomize button in the track header uses a Markov chain stochastic model inspired by Xenakis's compositional techniques. All parameters are generated in a single firmware-side pass and respect the track's key, scale, and bar structure.</div>
+      <table class="doc-table">
+        <tr><th>Parameter</th><th>Algorithm</th></tr>
+        <tr><td>Pitch</td><td>Markov chain over scale degrees. Transition weights follow an exponential decay with distance: moving to an adjacent degree is twice as likely as skipping one, four times as likely as skipping two, and so on. Degree 0 (the tonic) receives extra weight on every transition — a gravitational pull that keeps the melody from drifting away from home. Self-transitions (same note repeated) are allowed but rare. The chain starts at a random degree in octave 4–5 and self-corrects if it drifts outside the C2–C6 register.</td></tr>
+        <tr><td>Rests</td><td>~20% per step, reduced to ~8% on bar-starts so metric downbeats are usually sounding. Determined before the pitch draw so pitch state only advances for active steps.</td></tr>
+        <tr><td>Accent</td><td>~65% on bar-starts, ~12% elsewhere. Bar position is determined by the track's own time signature (Regular or Irregular).</td></tr>
+        <tr><td>Gate length</td><td>Exponential distribution: ~39% short (10–30%), ~39% medium (35–70%), ~22% long (75–95%). More short gates than long, giving a naturally articulated feel rather than uniform legato.</td></tr>
+        <tr><td>Ratchet / tie</td><td>Poisson-inspired: ~79% single note, ~8% double ratchet, ~5% triple, ~1% quadruple, ~7% tie to previous step. Tie and ratchet are mutually exclusive — setting one always clears the other.</td></tr>
+        <tr><td>Step probability</td><td>Each step is assigned a probability level (1–7) drawn from a skewed distribution: ~55% always-fire (7), with decreasing probability of lower values down to ~2% never-fire (1). Steps with partial probability create variation on every playback cycle — the pattern sounds slightly different each time around.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-rand-global">Randomize — Global (⚄ All Tracks)</h3>
+      <div class="doc-note">Global Randomize runs a single coordinated generation pass across all tracks, creating complementary rhythmic roles rather than independent random patterns. This models the "interplay and bouncing" of ensemble parts rather than tracks that ignore each other.<br><br>Style (Melodic / Intervallic / Floating) and structure flags (vary len / vary meter) are taken from the <strong>toolbar controls</strong> — the per-track Generative tab settings have no effect on Global Randomize. Use the per-track Randomize button if you want each track to use its own style and structure preferences independently.</div>
+      <table class="doc-table">
+        <tr><th>Aspect</th><th>How it works</th></tr>
+        <tr><td>Track roles</td><td>Even-numbered tracks (T1, T3) are assigned the "primary" role — active more often on beat positions and bar-starts. Odd-numbered tracks (T2, T4) are assigned the "complement" role — active more often on off-beats and between primary activity. Both roles are active on bar-starts so the downbeat feels grounded.</td></tr>
+        <tr><td>Time signature awareness</td><td>Each track's own time signature (Regular or Irregular) is used independently to classify each of its steps as a bar-start, on-beat, or off-beat. A T1 in 7/8 and a T2 in 4/4 each generate rhythms shaped by their own meter — the roles interact without forcing a shared grid.</td></tr>
+        <tr><td>Rest probabilities</td><td>Primary tracks: ~8% rest on bar-starts, ~20% on beats, ~48% on off-beats. Complement tracks: ~8% on bar-starts, ~52% on beats, ~18% on off-beats. The overlap on bar-starts creates tutti anchor points.</td></tr>
+        <tr><td>Gate length contrast</td><td>Primary tracks receive the same gate distribution as single-track Randomize (more legato). Complement tracks are biased shorter (~38% very short 8–25%, ~22% medium 28–55%, ~40% longer 58–80%), making them more staccato and percussive against the primary.</td></tr>
+        <tr><td>Step probability</td><td>Probabilities are skewed significantly lower than in single-track Randomize (~38% always-fire vs ~55%). More steps carry partial probability values (1–6), so over successive playback cycles tracks independently choose to fire or stay silent — the inter-track texture keeps shifting, creating the "bouncing" effect where activity seems to pass between tracks over time.</td></tr>
+        <tr><td>Pitch</td><td>Same Markov chain as single-track Randomize. Each track runs an independent chain starting from a different point in the PRNG sequence, so pitch content is distinct across tracks even though the rhythmic structure is coordinated.</td></tr>
+        <tr><td>Undo</td><td>Per-track snapshots are captured before generation, so each track's ↩ Undo button works independently after a Global Randomize — you can undo just T2 while keeping T1, T3, T4.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-mutation">Mutation — Stockhausen Drift</h3>
+      <div class="doc-note">Inspired by Karlheinz Stockhausen's indeterminate compositional techniques: individual note pitches drift slowly over time through small random increments, so the pattern gradually evolves away from where it started. Unlike Randomize (which generates a new pattern in one pass), Mutation is a continuous process — the pattern changes are imperceptible moment to moment but accumulate into something genuinely different over bars and minutes.<br><br>Mutation is an <strong>overlay</strong>: the stored pattern is never modified while mutation is running. You hear the drifted notes, but the underlying steps remain unchanged. If you hear something you want to keep, click <strong>⤓ Latch</strong> to write the current drifted pitches permanently into the pattern. Save-to-slot always captures whatever is currently stored — so Latch first, then Save if you want to preserve a mutated state.</div>
+      <table class="doc-table">
+        <tr><th>Parameter</th><th>Detail</th></tr>
+        <tr><td>Rate (4–512 steps)</td><td>How often the mutation engine fires a tick. At 4 steps the pattern evolves quickly — a 16-step loop at 120 BPM will tick four times per bar. At 512 steps it can take many minutes of playback before any note noticeably shifts. Rate counts this track's own step advances, so tracks with different lengths drift at different absolute rates even at the same Rate setting — shorter tracks tick more often per clock second.</td></tr>
+        <tr><td>Depth (subtle → max)</td><td>Controls two things simultaneously: the probability that a given step is affected on each tick (~12% at subtle, ~100% at max), and the maximum accumulated semitone delta (±2 at subtle, ±9 at max). Low depth gives sparse, cautious drift where only occasional notes shift by one or two semitones. High depth can eventually push every note to the edge of its allowed range, producing a pattern that has moved substantially from the original.</td></tr>
+        <tr><td>In Scale</td><td>When checked, the effective (drifted) note is snapped to the nearest note in the track's current Draw Scale key and scale at output time. The semitone delta still accumulates internally — notes only audibly shift when the delta is large enough to pull them to the next scale degree. In C Major, a C will stay silent until the delta reaches ≥1 semitone above C, at which point it snaps to D (2 semitones up); at ≥3 semitones it snaps to E, and so on. This creates a "threshold drift" effect — the drift still accumulates continuously, but the output feels quantised to the scale. Latch in this mode writes the snapped pitches, not the raw deltas. Uncheck for fully chromatic drift regardless of scale.</td></tr>
+        <tr><td>Chromatic scale</td><td>When the track's scale is set to Chromatic, the In Scale option has no effect — every semitone is by definition in scale. Mutation on a Chromatic track is always fully chromatic regardless of the checkbox. This is the most Stockhausen-faithful mode: atonal, freely wandering pitch material.</td></tr>
+        <tr><td>Rest steps</td><td>Rests are never mutated. A step set to rest stays a rest — mutation only drifts the pitch of sounding notes.</td></tr>
+        <tr><td>⤓ Latch</td><td>Commits the current overlay: writes each step's effective (drifted, and scale-snapped if In Scale is active) pitch permanently into the stored pattern, then clears all deltas to zero. The mutation engine continues running from this new baseline. Use this to capture a happy accident before saving. Note that Latch is irreversible — there is no undo for it (though loading a previously saved slot will restore an earlier state).</td></tr>
+        <tr><td>On/off behaviour</td><td>Disabling mutation clears all accumulated deltas immediately — the pattern snaps back to its stored pitches. Re-enabling starts a fresh drift from zero. The rate and depth settings are preserved across on/off cycles.</td></tr>
+        <tr><td>Interaction with Randomize</td><td>Randomize writes new pitches to the stored pattern and also resets the undo snapshot. If mutation is running when you Randomize, the mutation deltas remain but now apply on top of the newly randomized pattern. This can produce interesting compound textures — a randomized structural backbone that slowly drifts in character. If you don't want that, disable mutation before randomizing, or clear it manually with the on/off toggle.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-phase">Phase Setup (⇌ Phase)</h3>
+      <div class="doc-note">Brian Eno's tape-phasing and "Music for Airports" technique: multiple loops of different lengths play simultaneously. Because the lengths are coprime (share no common factor), the loops drift continuously in and out of phase — the combination of patterns keeps shifting without ever repeating exactly until the LCM (Least Common Multiple) of all lengths has elapsed.</div>
+      <table class="doc-table">
+        <tr><th>Concept</th><th>Detail</th></tr>
+        <tr><td>Coprime lengths</td><td>Two numbers are coprime if their only common factor is 1 (GCD = 1), meaning their LCM equals their product. For example, 7 and 11 are coprime: LCM = 77, so the combined pattern takes 77 steps to fully repeat. By contrast, 8 and 12 share factor 4, giving LCM = 24 — a much shorter cycle.</td></tr>
+        <tr><td>LCM and complexity</td><td>A higher LCM means a longer time before all tracks re-align. T1=7 + T2=11 (LCM 77) sounds like a short, evolving loop. T1=11 + T2=13 (LCM 143) takes nearly twice as long. Three coprime tracks multiply the complexity dramatically: 7+11+13 gives LCM 1001.</td></tr>
+        <tr><td>Applying a preset</td><td>The Phase panel shows presets appropriate for your current track count, sorted by LCM from simplest to most complex. Clicking Apply sends SET_LENGTH to each track and closes the panel. Track content is unchanged — only lengths are set.</td></tr>
+        <tr><td>Reset alignment</td><td>Use ▶ from start to reset all playheads to step 0, re-synchronising the tracks to hear the pattern from the beginning of its full LCM cycle.</td></tr>
+        <tr><td>With other features</td><td>Phase presets combine naturally with the Arpeggiator, Randomize, and Global Randomize. A good workflow: set coprime lengths via Phase Setup, then Global Randomize to fill all tracks — the complementary rhythmic roles will drift in and out of alignment as the loops cycle.</td></tr>
+      </table>
+      <div class="doc-note" style="margin-top:8px"><strong>Preset examples (2 tracks):</strong> 7+11 (LCM 77) · 7+13 (LCM 91) · 11+13 (LCM 143) · 8+11 (LCM 88) · 8+9 (LCM 72) · 12+11 (LCM 132)<br><strong>3 tracks:</strong> 7+11+13 (LCM 1001) · 8+11+13 (LCM 1144) · 7+8+11 (LCM 616)<br><strong>4 tracks:</strong> 7+11+13+16 (LCM 16016) · 7+11+13+17 (LCM 17017)</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-toolbar">Toolbar</h3>
+      <table class="doc-table">
+        <tr><th>Control</th><th>Effect</th></tr>
+        <tr><td>▶ Play</td><td>Resume playback from current step position without resetting playheads.</td></tr>
+        <tr><td>■ Stop</td><td>Freeze playback at the current step. Resume with ▶ Play to continue from where it stopped.</td></tr>
+        <tr><td>▶ from start</td><td>Reset all playheads to step 0 and immediately resume playback. Also re-synchronises tracks for Eno-style phase listening.</td></tr>
+        <tr><td>Slots 1–4</td><td>Click to load a saved pattern. Shift+click to save the current pattern to that slot. Saved slots persist across power cycles. The last-used slot is highlighted with an amber underline.</td></tr>
+        <tr><td>⊘ Mute All</td><td>Global mute — silences all CV/Pulse and MIDI output from all tracks regardless of per-track mute/solo state. Individual track states are preserved; disabling global mute restores them.</td></tr>
+        <tr><td>+ Add Track</td><td>Add a new track (maximum 4). Tracks 3–4 are MIDI-only (no CV/Pulse hardware output). New tracks start with default settings and empty steps.</td></tr>
+        <tr><td>⚄ All Tracks</td><td>Global Randomize all tracks simultaneously with coordinated rhythmic structure. See the Global Randomize section for full details.</td></tr>
+        <tr><td>⇌ Phase</td><td>Open the Phase Setup panel with coprime-length presets for Eno-style phasing. See the Phase Setup section for full details.</td></tr>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-protocol">Protocol — Command Reference</h3>
+      <div class="doc-note">Binary frame format: <span class="kbd">0x02</span> STX + cmd (u8) + paylen (u16 LE) + payload. Works over WebSerial (CDC). Not 7-bit constrained — signed bytes pass directly.</div>
+      <table class="doc-table">
+        <tr><th>Opcode</th><th>Name</th><th>Payload</th><th>Response</th></tr>
+        <tr><td>0x10</td><td>GET_STATE</td><td>—</td><td>RSP_STATE</td></tr>
+        <tr><td>0x11</td><td>SET_STEP</td><td>[track, step, note, gatePct, flags]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x12</td><td>SET_LENGTH</td><td>[track, length]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x13</td><td>SET_TEMPO</td><td>[bpm_lo, bpm_hi]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x14</td><td>SET_MIDI_CHANNEL</td><td>[track, channel(1–16)]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x15</td><td>SET_MIDI_ENABLED</td><td>[track, enabled(0/1)]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x16</td><td>RESET_PLAYHEADS</td><td>—</td><td>ACK</td></tr>
+        <tr><td>0x17</td><td>RANDOMIZE</td><td>[track, style:u8(0=Melodic 1=Intervallic 2=Floating), structFlags:u8(bit0=varyLen bit1=varyTimeSig)]</td><td>ACK + RSP_STATE</td></tr>
+        <tr><td>0x18</td><td>SAVE_SLOT</td><td>[slot(0–3)]</td><td>ACK/NACK</td></tr>
+        <tr><td>0x19</td><td>LOAD_SLOT</td><td>[slot(0–3)]</td><td>ACK/NACK + RSP_STATE</td></tr>
+        <tr><td>0x1A</td><td>GET_SLOT_BITMAP</td><td>—</td><td>RSP_SLOT_BITMAP</td></tr>
+        <tr><td>0x1B</td><td>SET_TRANSPORT</td><td>[0=play, 1=stop, 2=play from start]</td><td>ACK</td></tr>
+        <tr><td>0x1C</td><td>SET_FOCUS_TRACK</td><td>[track]</td><td>ACK</td></tr>
+        <tr><td>0x1D</td><td>SET_CLOCK_SOURCE</td><td>[0=Internal, 1=ExtPulse]</td><td>ACK</td></tr>
+        <tr><td>0x1E</td><td>SET_MUTE</td><td>[track, muted(0/1)]</td><td>ACK</td></tr>
+        <tr><td>0x1F</td><td>ADD_TRACK</td><td>—</td><td>ACK/NACK + RSP_STATE</td></tr>
+        <tr><td>0x20</td><td>REMOVE_TRACK</td><td>[track]</td><td>ACK/NACK + RSP_STATE</td></tr>
+        <tr><td>0x21</td><td>SET_TRACK_SHIFT</td><td>[track, (int8)semitones]</td><td>ACK</td></tr>
+        <tr><td>0x22</td><td>SNAP_TO_SCALE</td><td>[track, key(0–11), scale(0–15)]</td><td>ACK + RSP_STATE</td></tr>
+        <tr><td>0x23</td><td>TRANSPOSE_NOTES</td><td>[track, (int8)semitones]</td><td>ACK + RSP_STATE</td></tr>
+        <tr><td>0x24</td><td>UNDO_RANDOMIZE</td><td>[track]</td><td>ACK/NACK + RSP_STATE</td></tr>
+        <tr><td>0x25</td><td>SET_TRACK_SCALE</td><td>[track, key(0–11), scale(0–15)]</td><td>ACK</td></tr>
+        <tr><td>0x26</td><td>GET_VERSION</td><td>—</td><td>RSP_VERSION [major, minor, patch]</td></tr>
+        <tr><td>0x27</td><td>SET_GLIDE</td><td>[track, rateMs_lo, rateMs_hi]</td><td>ACK (0=off; CV only, MIDI stays integer)</td></tr>
+        <tr><td>0x28</td><td>SET_ARP_MODE</td><td>[track, mode]</td><td>ACK (bits0-6: 0=Off 1=Fwd 2=Rev 3=PingPong 4=Random 5=Converge 6=Diverge; bit7=includeRests)</td></tr>
+        <tr><td>0x29</td><td>GLOBAL_RANDOMIZE</td><td>[style:u8(0=Melodic 1=Intervallic 2=Floating), structFlags:u8(bit0=varyLen bit1=varyTimeSig)]</td><td>ACK + RSP_STATE (Markov randomize all tracks; even=primary/beats, odd=complement/off-beats; per-track undo snapshots captured)</td></tr>
+        <tr><td>0x2A</td><td>SET_ACCENT_MODE</td><td>[track, mode]</td><td>ACK + RSP_STATE (mode: 0=Off 1=Spike 2=Gate 3=Hybrid; triggers on audio L/R jack for CV tracks; AC-coupled transient output)</td></tr>
+        <tr><td>0x2B</td><td>SET_TIMESIG_REGULAR</td><td>[track, timeSigNum(1–32)]</td><td>ACK (sets steps-per-bar for visual grouping and Randomize accent weighting; resets timeSigMode to Regular)</td></tr>
+        <tr><td>0x2C</td><td>SET_TIMESIG_IRREGULAR</td><td>[track, count(1–8), groups…]</td><td>ACK (sets additive meter groups e.g. [3,3,2] for 3+3+2; sets timeSigMode to Irregular)</td></tr>
+        <tr><td>0x2D</td><td>SET_MUTATION</td><td>[track, enabled(0/1), rateIdx(0–7), depthIdx(0–7), scaleConstrain(0/1)]</td><td>ACK + STATE (enable/disable Stockhausen drift; rate selects tick interval {4,8,…,512 steps}; depth controls probability and ±semitone range; scaleConstrain snaps output to track key/scale)</td></tr>
+        <tr><td>0x2E</td><td>MUTATION_LATCH</td><td>[track]</td><td>ACK + STATE (write current overlay note deltas into stored steps, clear deltas — commits happy accidents permanently)</td></tr>
+      </table>
+      <div class="doc-note" style="margin-top:8px">RSP_STATE layout (SBT9): [numTracks][bpm_lo][bpm_hi][clockSource] then per track: [length][midiCh][midiEnabled][key][scale][shift(int8)][portaRateMs_lo][portaRateMs_hi][arpMode][accentOutMode][timeSigNum][timeSigMode][irregularGroupCount][irregularGroups×8] then per step: [note][gatePct][flags(tied|accent|ratchet)].<br>Step flags: bit0=tied, bit1=accent, bits4-2=ratchetCount−1, bits7-5=probability(0-7, 7=always). note=127 → rest (WIRE_REST).<br>timeSigMode: 0=Regular, 1=Irregular.<br>Scale enum: 0=Major, 1=Natural Minor, 2=Pentatonic Major, 3=Chromatic, 4=Harmonic Minor, 5=Melodic Minor, 6=Dorian, 7=Phrygian, 8=Lydian, 9=Mixolydian, 10=Locrian, 11=Blues, 12=Whole Tone, 13=Pentatonic Minor, 14=Hungarian Minor, 15=Japanese.<br>accentOutMode: 0=Off, 1=Spike (5ms burst), 2=Gate (gate duration), 3=Hybrid (spike+sustain). Audio L→T0, Audio R→T1. AC-coupled — sustained DC decays at the receiving end.</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 id="doc-hardware">Hardware</h3>
+      <table class="doc-table">
+        <tr><th>Resource</th><th>Function</th></tr>
+        <tr><td>CV Out 1 / Pulse 1</td><td>Track 1 pitch CV + gate</td></tr>
+        <tr><td>CV Out 2 / Pulse 2</td><td>Track 2 pitch CV + gate</td></tr>
+        <tr><td>Pulse In 1</td><td>External clock (one step per rising edge when Ext Pulse selected)</td></tr>
+        <tr><td>Pulse In 2</td><td>Reset to step 0 (always active, regardless of clock source)</td></tr>
+        <tr><td>USB</td><td>WebSerial (CDC) for web UI · USB MIDI for note output to DAW</td></tr>
+        <tr><td>Panel — Down page</td><td>Main=track length, Y=track select, X reserved</td></tr>
+        <tr><td>Panel — Middle page</td><td>Main=step pitch (fully down=rest), X=step scrub, Y=gate length</td></tr>
+        <tr><td>Panel — Up page</td><td>Main=tempo (internal clock), X=slot select, Y=save/load trigger</td></tr>
+      </table>
+    </div>
+
+  </div>
+</div><!-- end tab-docs -->
+
+<!-- ══ Diagnostics tab ══ -->
+<div id="tab-diag" class="tab-panel">
+
+  <div class="card">
+    <h2>Version</h2>
+    <table style="font-family:var(--mono);font-size:12px;border-collapse:collapse;width:100%">
+      <tr><td style="padding:3px 8px 3px 0;color:var(--dim)">Web UI</td><td id="ver-webui" style="padding:3px 0">v<span id="ver-webui-str">—</span></td></tr>
+      <tr><td style="padding:3px 8px 3px 0;color:var(--dim)">Firmware</td><td style="padding:3px 0"><span id="ver-fw">—</span></td></tr>
     </table>
+    <div id="ver-status" style="margin-top:6px;font-size:12px;display:none"></div>
   </div>
 
-</div>
+  <div class="card">
+    <h2>Debug</h2>
+    <div class="row">
+      <button id="btnTicks" disabled onclick="sendText('ticks?\n')">Ticks?</button>
+      <button id="btnDiag"  disabled onclick="sendText('diag?\n')">Diag?</button>
+      <button id="btnGetState" disabled onclick="sendGetState()">Get State</button>
+      <span class="status dim" id="serialStatus">disconnected</span>
+    </div>
+    <div class="log" id="cdcLog"><span class="info">— not connected —</span></div>
+  </div>
 
-<div id="tab-userdocs" class="tabPane">
-  <h2>User Guide</h2>
-  <p>StepBridge is a CV/Pulse/MIDI step sequencer for the Music Thing Modular Workshop Computer.</p>
-  <h3>Panel controls</h3>
-  <ul>
-    <li><b>Down (Utility)</b>: Main knob = sequence length, Y knob = track select.</li>
-    <li><b>Middle (Step Edit)</b>: Main knob = pitch of the scrubbed step (turn fully down for rest), X knob = step scrub, Y knob = track select.</li>
-    <li><b>Up (Tempo)</b>: Main knob = tempo (only while using the internal clock).</li>
-  </ul>
-  <h3>Clock</h3>
-  <p>Patch a clock signal into Pulse In 1 to sync to an external clock; leave it unpatched to use the internal tempo knob. Pulse In 2 resets all tracks to step 1.</p>
-  <p><b>Pressing Play arms the sequencer rather than guaranteeing an instant start.</b> With External Pulse or MIDI Clock selected, playback genuinely can't begin until the next real pulse/tick arrives from the external clock - there's no way to predict or control exactly when that will be relative to when you pressed Play, since the external clock keeps running on its own regardless of our transport state. This is standard behavior for any instrument that follows an external clock, not a bug: you'll see the transport label show <b>"Armed…"</b> (pulsing) until the first pulse actually arrives and playback truly starts. Once that first pulse lands, every step after it is correctly locked to the external clock's actual rate - only that first moment is variable.</p>
-  <h3>Web UI</h3>
-  <p>Click a step in the Sequencer tab to set its pitch, or click near the bottom of a step to make it a rest. Use the transport buttons to stop, pause, or play the sequencer from the browser.</p>
-</div>
+  <div class="card">
+    <h2>Connection Checklist</h2>
+    <ul class="checklist">
+      <li class="pend" id="chk-serial"><span class="ck">·</span>CDC serial port appears in browser port picker</li>
+      <li class="pend" id="chk-connect"><span class="ck">·</span>WebSerial connected</li>
+      <li class="pend" id="chk-version"><span class="ck">·</span>Firmware version confirmed</li>
+      <li class="pend" id="chk-echo"><span class="ck">·</span>CDC echo round-trip confirmed</li>
+      <li class="pend" id="chk-core1"><span class="ck">·</span>core1 alive (ticks counter incrementing)</li>
+      <li class="pend" id="chk-midi"><span class="ck">·</span>MIDI port "StepBridge 2" appears in WebMIDI</li>
+    </ul>
+  </div>
 
-<div id="tab-techdocs" class="tabPane">
-  <h2>Technical Documentation</h2>
-  <p>SysEx framing: <code>0xF0, 0x7D, 0x53 (device ID), &lt;command&gt;, ...payload..., 0xF7</code></p>
-  <p>See <code>sysex_protocol.h</code> for the authoritative message ID table. Implemented so far:</p>
-  <table>
-    <tr><th>ID</th><th>Name</th><th>Direction</th></tr>
-    <tr><td>0x01</td><td>MSG_FIRMWARE_VERSION</td><td>Firmware → Host</td></tr>
-    <tr><td>0x02</td><td>MSG_TRACK_STEPS</td><td>Firmware → Host (3 bytes/step: note, gateLenPct, flags - bit0=tied, bit1=accent, bits2-4=ratchetCount-1). Both pull-response AND now send-on-change, so panel-driven edits (length, steps, time signature) appear live without a manual Refresh.</td></tr>
-    <tr><td>0x05</td><td>MSG_PLAYHEAD</td><td>Firmware → Host (send-on-change)</td></tr>
-    <tr><td>0x07</td><td>MSG_NUM_TRACKS</td><td>Firmware → Host</td></tr>
-    <tr><td>0x08</td><td>MSG_TEMPO</td><td>Firmware → Host (send-on-change; bpmHi/bpmLo 7-bit split, measured from real step-advance timing, not a dial-in setting - see Pattern::measuredBpm)</td></tr>
-    <tr><td>0x09</td><td>MSG_CLOCK_SOURCE</td><td>Firmware → Host (send-on-change after a SET; not yet pushed when firmware auto-detects Internal/ExternalPulse on its own)</td></tr>
-    <tr><td>0x0A</td><td>MSG_TRANSPORT_STATE</td><td>Firmware → Host (send-on-change)</td></tr>
-    <tr><td>0x0C</td><td>MSG_ARMED</td><td>Firmware → Host (send-on-change; true from Play until the first real pulse/tick arrives, ExternalPulse/MidiClock only)</td></tr>
-    <tr><td>0x06</td><td>MSG_PANEL_STATE</td><td>Firmware → Host (page, selectedTrack, scrubStep) - push-only, no request; shows live panel focus in the Web UI</td></tr>
-    <tr><td>0x0B</td><td>MSG_TRACK_LIVE_STATE</td><td>Firmware → Host (track, shiftWire, muted, solo, key, scale, midiChannel, midiEnabled - send-on-change AND in response to a request)</td></tr>
-    <tr><td>0x0D</td><td>MSG_GLOBAL_MUTE</td><td>Firmware → Host (muted 0/1 - master override, send-on-change AND in response to a request)</td></tr>
-    <tr><td>0x04</td><td>MSG_SLOT_BITMAP</td><td>Firmware → Host (bitmapLow7, bitmapBit7, activeSlot 0-7 or 8=none) - send-on-change AND in response to MSG_REQUEST_SLOT_BITMAP. Bitmap split across two bytes since NUM_SAVE_SLOTS=8 needs bit 7, which would make a single byte illegal SysEx data.</td></tr>
-    <tr><td>0x10</td><td>MSG_DIAG_EVENT_BATCH</td><td>Firmware → Host (count, more 0/1, then count*(type, seq[5x7bit], timestampMs[5x7bit], arg0, arg1)) - response to MSG_REQUEST_DIAG_EVENTS. seq/timestampMs are uint32_t split into 5 7-bit-safe bytes each.</td></tr>
-    <tr><td>0x54</td><td>MSG_REQUEST_DIAG_EVENTS</td><td>Host → Firmware (sinceSeq[5x7bit]) - 0 to fetch from the oldest still-buffered event; replies MSG_DIAG_EVENT_BATCH</td></tr>
-    <tr><td>0x40</td><td>MSG_ACK</td><td>Firmware → Host</td></tr>
-    <tr><td>0x41</td><td>MSG_NACK</td><td>Firmware → Host</td></tr>
-    <tr><td>0x50</td><td>MSG_INTERFACE_VERSION</td><td>Host → Firmware</td></tr>
-    <tr><td>0x51</td><td>MSG_REQUEST_TRACK_STEPS</td><td>Host → Firmware</td></tr>
-    <tr><td>0x55</td><td>MSG_REQUEST_NUM_TRACKS</td><td>Host → Firmware</td></tr>
-    <tr><td>0x56</td><td>MSG_REQUEST_TEMPO</td><td>Host → Firmware (re-syncs current BPM on connect/reload, since MSG_TEMPO is otherwise send-on-change only)</td></tr>
-    <tr><td>0x57</td><td>MSG_REQUEST_CLOCK_SOURCE</td><td>Host → Firmware (same reasoning as above)</td></tr>
-    <tr><td>0x58</td><td>MSG_REQUEST_TRACK_LIVE_STATE</td><td>Host → Firmware (track) - same reasoning, covers shift/mute/solo</td></tr>
-    <tr><td>0x59</td><td>MSG_REQUEST_GLOBAL_MUTE</td><td>Host → Firmware (none)</td></tr>
-    <tr><td>0x60</td><td>MSG_SET_STEP</td><td>Host → Firmware</td></tr>
-    <tr><td>0x61</td><td>MSG_SET_STEP_GATE</td><td>Host → Firmware (gateLenPct 1-100)</td></tr>
-    <tr><td>0x62</td><td>MSG_SET_STEP_TIE</td><td>Host → Firmware (clears ratchet to 1 if set)</td></tr>
-    <tr><td>0x6C</td><td>MSG_SET_STEP_ACCENT</td><td>Host → Firmware</td></tr>
-    <tr><td>0x6D</td><td>MSG_SET_STEP_RATCHET</td><td>Host → Firmware (1-8, clears tie if set)</td></tr>
-    <tr><td>0x6E</td><td>MSG_SNAP_TO_SCALE</td><td>Host → Firmware (key 0-11, scale 0-3 - destructive, one-shot)</td></tr>
-    <tr><td>0x6F</td><td>MSG_PREVIEW_NOTE</td><td>Host → Firmware (track, note) - fire-and-forget audition; sends MIDI and (for CV tracks) briefly pulses real CV/Pulse - can glitch live output, accepted tradeoff</td></tr>
-    <tr><td>0x76</td><td>MSG_SET_TRACK_SHIFT</td><td>Host → Firmware (wire = shift+64, shift -24..+24 - Live Shift, non-destructive)</td></tr>
-    <tr><td>0x77</td><td>MSG_SET_TRACK_MUTE</td><td>Host → Firmware (track, muted 0/1)</td></tr>
-    <tr><td>0x78</td><td>MSG_SET_TRACK_SOLO</td><td>Host → Firmware (track, solo 0/1)</td></tr>
-    <tr><td>0x65</td><td>MSG_SET_MIDI_CHANNEL</td><td>Host → Firmware (track, channel 1-16)</td></tr>
-    <tr><td>0x66</td><td>MSG_SET_MIDI_ENABLED</td><td>Host → Firmware (track, enabled 0/1)</td></tr>
-    <tr><td>0x67</td><td>MSG_ADD_TRACK</td><td>Host → Firmware (none) - appends one MIDI-only track (NACK if at MAX_TRACKS); replies MSG_NUM_TRACKS</td></tr>
-    <tr><td>0x68</td><td>MSG_REMOVE_TRACK</td><td>Host → Firmware (none) - removes the highest-index track (NACK if at NUM_CV_TRACKS); replies MSG_NUM_TRACKS</td></tr>
-    <tr><td>0x7B</td><td>MSG_SET_DRAW_SCALE</td><td>Host → Firmware (track, key 0-11, scale 0-3) - panel pitch knob snaps to this too, not just mouse-drawn pitches</td></tr>
-    <tr><td>0x71</td><td>MSG_RANDOMIZE</td><td>Host → Firmware (track) - generates a new melodic pattern; updated steps arrive via MSG_TRACK_STEPS push</td></tr>
-    <tr><td>0x72</td><td>MSG_UNDO_RANDOMIZE</td><td>Host → Firmware (track) - restores the one-level pre-randomize snapshot; NACK if none pending</td></tr>
-    <tr><td>0x53</td><td>MSG_REQUEST_SLOT_BITMAP</td><td>Host → Firmware (none)</td></tr>
-    <tr><td>0x69</td><td>MSG_SAVE_SLOT</td><td>Host → Firmware (slot 0-7) - saves the first FlashStore::NUM_SAVE_TRACKS (2) tracks; replies MSG_SLOT_BITMAP</td></tr>
-    <tr><td>0x6A</td><td>MSG_LOAD_SLOT</td><td>Host → Firmware (slot 0-7) - loads into those tracks; NACK if slot empty; replies MSG_SLOT_BITMAP</td></tr>
-    <tr><td>0x7A</td><td>MSG_SET_GLOBAL_MUTE</td><td>Host → Firmware (muted 0/1) - overrides every track's mute/solo, panic/safety control</td></tr>
-    <tr><td>0x79</td><td>MSG_TRANSPOSE_NOTES</td><td>Host → Firmware (wire = semitones+64 - destructive, one-shot)</td></tr>
-    <tr><td>0x63</td><td>MSG_SET_LENGTH</td><td>Host → Firmware (1-64, triggers replicate-last-step growth rule)</td></tr>
-    <tr><td>0x64</td><td>MSG_SET_TIMESIG</td><td>Host → Firmware (timeSigNum 1-32, also sets mode=Regular)</td></tr>
-    <tr><td>0x70</td><td>MSG_SET_TIMESIG_IRREGULAR</td><td>Host → Firmware (groupCount 1-8, groups[] 1-32 each, also sets mode=Irregular)</td></tr>
-    <tr><td>0x74</td><td>MSG_SET_CLOCK_SOURCE</td><td>Host → Firmware (0=Internal, 1=ExternalPulse, 2=MidiClock)</td></tr>
-    <tr><td>0x75</td><td>MSG_SET_TRANSPORT</td><td>Host → Firmware</td></tr>
-  </table>
-  <p>Pull model: every request gets either a data response or an explicit NACK; a request with no reply within 750ms is logged as a timeout in the connection diagnostics panel. <code>MSG_PLAYHEAD</code> is the only unprompted broadcast, sent only when the playhead actually changes.</p>
-  <p><em>Note: every SysEx data byte, including the command byte, must be 0-127. Host→Firmware IDs were originally specced at 0x60-0x89 and renumbered to 0x50-0x79 after this was caught during milestone-3 hardware testing (0x85 is 133, an illegal MIDI status byte value).</em></p>
-  <p><em>MIDI Clock: firmware honors incoming realtime Start(0xFA)/Continue(0xFB)/Stop(0xFC) as transport commands and 0xF8 (24 PPQN) for step timing, but only once MIDI Clock is the explicitly selected source - it never overrides Internal/ExternalPulse on its own. Selecting MIDI Clock from the Web UI is sticky until explicitly changed back; patching/unpatching Pulse In 1 does not affect it.</em></p>
-</div>
+  <div class="card">
+    <h2>MIDI (WebMIDI)</h2>
+    <div class="row">
+      <button onclick="detectMIDI()">Detect MIDI Ports</button>
+      <span class="status dim" id="midiStatus">not checked</span>
+    </div>
+    <div id="midiList" style="font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:6px"></div>
+  </div>
 
-<script src="app.js"></script>
+  <div class="card">
+    <h2>Diagnostics</h2>
+    <div class="row">
+      <button id="btnDiagPoll" disabled onclick="pollDiag()">Poll once</button>
+      <button id="btnDiagAuto" disabled onclick="toggleAutoPoll()">Auto-poll: off</button>
+      <span class="poll-ts" id="pollTs">—</span>
+    </div>
+    <div class="diag-grid">
+      <div class="tile" id="t-proc"><div class="tl">proc</div><div class="tv" id="dv-proc">—</div><div class="ts">48 kHz ticks</div></div>
+      <div class="tile" id="t-steps"><div class="tl">steps</div><div class="tv" id="dv-steps">—</div><div class="ts">step advances</div></div>
+      <div class="tile" id="t-drop"><div class="tl">drop</div><div class="tv" id="dv-drop">—</div><div class="ts">FIFO drops</div></div>
+      <div class="tile" id="t-on0"><div class="tl">on0/off0</div><div class="tv"><span id="dv-on0">—</span>/<span id="dv-off0">—</span></div><div class="ts" id="ds-t0">track 1</div></div>
+      <div class="tile" id="t-on1"><div class="tl">on1/off1</div><div class="tv"><span id="dv-on1">—</span>/<span id="dv-off1">—</span></div><div class="ts" id="ds-t1">track 2</div></div>
+      <div class="tile" id="t-midi"><div class="tl">midi</div><div class="tv" id="dv-midi">—</div><div class="ts">MIDI mounted</div></div>
+      <div class="tile" id="t-mute"><div class="tl">mute</div><div class="tv" id="dv-mute">—</div><div class="ts">fw bitmask</div></div>
+      <div class="tile" id="t-fwch"><div class="tl">fw ch0/ch1</div><div class="tv"><span id="dv-ch0">—</span>/<span id="dv-ch1">—</span></div><div class="ts">MIDI channels in fw</div></div>
+      <div class="tile" id="t-fwn"><div class="tl">fw n0/n1</div><div class="tv"><span id="dv-n0">—</span>/<span id="dv-n1">—</span></div><div class="ts">step[0] notes in fw</div></div>
+    </div>
+    <ul class="assert-list">
+      <li><span class="ai ai-pend" id="ai-run">·</span>Audio running<span class="ad" id="ad-run"></span></li>
+      <li><span class="ai ai-pend" id="ai-steps">·</span>Steps advancing<span class="ad" id="ad-steps"></span></li>
+      <li><span class="ai ai-pend" id="ai-drop">·</span>No FIFO drops</li>
+      <li><span class="ai ai-pend" id="ai-t0">·</span>Track 1 balanced<span class="ad" id="ad-t0"></span></li>
+      <li><span class="ai ai-pend" id="ai-t1">·</span>Track 2 balanced<span class="ad" id="ad-t1"></span></li>
+      <li><span class="ai ai-pend" id="ai-midi2">·</span>MIDI mounted</li>
+    </ul>
+  </div>
+
+</div><!-- end tab-diag -->
+
+<script>
+// ── Protocol constants ────────────────────────────────────────────────────────
+const STX=0x02;
+const CMD={
+  GET_STATE:0x10,SET_STEP:0x11,SET_LENGTH:0x12,SET_TEMPO:0x13,
+  SET_MIDI_CHANNEL:0x14,SET_MIDI_ENABLED:0x15,RESET_PLAYHEADS:0x16,RANDOMIZE:0x17,
+  SAVE_SLOT:0x18,LOAD_SLOT:0x19,GET_SLOT_BITMAP:0x1A,SET_TRANSPORT:0x1B,
+  SET_CLOCK_SOURCE:0x1D,
+  SET_MUTE:0x1E,ADD_TRACK:0x1F,REMOVE_TRACK:0x20,
+  SET_TRACK_SHIFT:0x21,SNAP_TO_SCALE:0x22,TRANSPOSE_NOTES:0x23,UNDO_RANDOMIZE:0x24,
+  SET_TRACK_SCALE:0x25,GET_VERSION:0x26,SET_GLIDE:0x27,SET_ARP_MODE:0x28,
+  GLOBAL_RANDOMIZE:0x29,SET_ACCENT_MODE:0x2A,SET_TIMESIG_REGULAR:0x2B,SET_TIMESIG_IRREGULAR:0x2C,
+  SET_MUTATION:0x2D,MUTATION_LATCH:0x2E
+};
+const RSP={ACK:0x40,NACK:0x41,STATE:0x42,PLAYHEAD:0x43,PANEL_STATE:0x44,SLOT_BITMAP:0x45,TEMPO:0x46,VERSION:0x47};
+// Version tracking — must match firmware FW_VERSION_MAJOR/MINOR in cdc_proto.h
+const WEB_UI_VERSION='0.10.0';
+const EXPECTED_FW={major:0,minor:10}; // patch is cosmetic, only major+minor validated
+const STEP_FLAG_TIED=0x01,STEP_FLAG_ACCENT=0x02;
+const WIRE_REST=127;
+const NOTE_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const CLOCK_LABELS=['Internal','Ext Pulse','MIDI Clock'];
+const ARP_MODE_NAMES=['Off','Forward','Reverse','PingPong','Random','Converge','Diverge'];
+function noteName(n){if(n<0||n>126)return'·';return NOTE_NAMES[n%12]+(Math.floor(n/12)-1);}
+
+// ── Tab navigation ────────────────────────────────────────────────────────────
+function showTab(name){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.querySelector('.tab-btn[data-tab="'+name+'"]').classList.add('active');
+}
+
+// ── WebSerial state ───────────────────────────────────────────────────────────
+let port=null,reader=null,readLoopRunning=false;
+let rxBuf=new Uint8Array(0);
+
+// ── Pattern state ─────────────────────────────────────────────────────────────
+let pattern=null,lastStateBytes=null,slotBitmap=0,transportStopped=false,lastUsedSlot=null,pendingSlot=null;
+const trackUndoAvailable={}; // ti -> bool; true after Randomize, false after Undo or load
+const latchedUnsaved=new Set(); // tracks latched but not yet saved to flash
+let ribbonDragging=false; // true while any ribbon has pointer capture — blocks mid-drag renderEditor()
+let panelFocusTrack=-1, panelFocusStep=-1; // last known hardware panel selection
+
+function updatePanelFocus(page,track,step){
+  // Clear previous highlights
+  document.querySelectorAll('.track-block.panel-focused').forEach(el=>el.classList.remove('panel-focused'));
+  document.querySelectorAll('.step-cell.panel-focused').forEach(el=>el.classList.remove('panel-focused'));
+  panelFocusTrack=track; panelFocusStep=(page===1)?step:-1;
+  if(page===2)return; // Up page = tempo/slots, no track/step focus to show
+  const block=document.getElementById('track-'+track);
+  if(block){
+    block.classList.add('panel-focused');
+    if(page===1){ // Middle = step edit
+      const cell=document.getElementById('cell-'+track+'-'+step);
+      if(cell)cell.classList.add('panel-focused');
+    }
+  }
+}
+
+// ── Bar grouping (client-side only, purely visual) ────────────────────────────
+const barSizes={};          // ti -> steps per bar (regular mode)
+const barMode={};           // ti -> 'regular' | 'irregular'
+const barGroups={};         // ti -> [3,3,2] (irregular mode)
+const barStartCache={};     // ti -> Set<si> (computed on demand)
+function getBarSize(ti){return barSizes[ti]||4;}
+function invalidateBarStarts(ti){delete barStartCache[ti];}
+function getBarStarts(ti){
+  if(barStartCache[ti])return barStartCache[ti];
+  const starts=new Set();
+  if(!pattern)return starts;
+  const len=pattern.tracks[ti].length;
+  if((barMode[ti]||'regular')==='regular'){
+    const bs=getBarSize(ti);
+    for(let si=bs;si<len;si+=bs)starts.add(si);
+  }else{
+    const groups=barGroups[ti]&&barGroups[ti].length?barGroups[ti]:[4];
+    let pos=0,gi=0;
+    while(pos<len){pos+=groups[gi%groups.length];if(pos>0&&pos<len)starts.add(pos);gi++;}
+  }
+  barStartCache[ti]=starts;
+  return starts;
+}
+
+// ── Draw-to-scale (client-side snapping) ──────────────────────────────────────
+const SCALE_INTERVALS=[
+  [0,2,4,5,7,9,11],                   // 0  Major
+  [0,2,3,5,7,8,10],                   // 1  Natural Minor
+  [0,2,4,7,9],                        // 2  Pentatonic Major
+  [0,1,2,3,4,5,6,7,8,9,10,11],       // 3  Chromatic
+  [0,2,3,5,7,8,11],                   // 4  Harmonic Minor
+  [0,2,3,5,7,9,11],                   // 5  Melodic Minor
+  [0,2,3,5,7,9,10],                   // 6  Dorian
+  [0,1,3,5,7,8,10],                   // 7  Phrygian
+  [0,2,4,6,7,9,11],                   // 8  Lydian
+  [0,2,4,5,7,9,10],                   // 9  Mixolydian
+  [0,1,3,5,6,8,10],                   // 10 Locrian
+  [0,3,5,6,7,10],                     // 11 Blues
+  [0,2,4,6,8,10],                     // 12 Whole Tone
+  [0,3,5,7,10],                       // 13 Pentatonic Minor
+  [0,2,3,6,7,8,11],                   // 14 Hungarian Minor
+  [0,2,3,7,8],                        // 15 Japanese (Hirajoshi)
+];
+const SCALE_NAMES=[
+  'Major','Natural Minor','Pentatonic','Chromatic',
+  'Harmonic Minor','Melodic Minor','Dorian','Phrygian',
+  'Lydian','Mixolydian','Locrian','Blues',
+  'Whole Tone','Pentatonic Minor','Hungarian Minor','Japanese',
+];
+const SCALE_CHROMATIC_IDX=3;
+const drawScaleKey={};     // ti -> 0-11
+const drawScaleIdx={};     // ti -> 0-15
+const drawScaleOn={};      // ti -> bool (false = snapping disabled)
+const glideMaxPerTrack={}; // ti -> ms; persisted across renderEditor() rebuilds
+const trackFooterTab={};  // ti -> active tab name; persisted across renderEditor() rebuilds
+const randStylePref={};    // ti -> 0=Melodic 1=Intervallic 2=Floating; persisted across rebuilds
+const randStructurePref={}; // ti -> flags byte (bit0=varyLen bit1=varyTimeSig)
+function nearestInScale(note,key,scaleIdx){
+  if(scaleIdx===SCALE_CHROMATIC_IDX)return note;
+  const ivs=SCALE_INTERVALS[scaleIdx];
+  let best=note,bestDist=127;
+  for(let oct=-1;oct<=10;oct++){
+    for(const iv of ivs){
+      const c=oct*12+key+iv;
+      if(c<0||c>126)continue;
+      const d=Math.abs(c-note);
+      if(d<bestDist){bestDist=d;best=c;}
+    }
+  }
+  return best;
+}
+function snapNote(ti,note){
+  if(note===-1)return note;
+  if(drawScaleOn[ti]===false)return note;
+  const k=drawScaleKey[ti],s=drawScaleIdx[ti];
+  if(k===undefined||s===undefined)return note;
+  return nearestInScale(note,k,s);
+}
+
+// Step through scale degrees when a draw-scale is active, rather than nudging
+// by semitone and re-snapping (which ties break toward the lower note, making
+// scroll-up appear to do nothing on scale boundaries).
+function nudgeNote(ti,note,delta){
+  if(note===-1)return note;
+  const on=drawScaleOn[ti];
+  const k=drawScaleKey[ti],s=drawScaleIdx[ti];
+  if(!on||s===undefined||s===SCALE_CHROMATIC_IDX){ // chromatic or no scale
+    return Math.max(0,Math.min(126,note+delta));
+  }
+  const ivs=SCALE_INTERVALS[s];
+  const scaleNotes=[];
+  for(let oct=-1;oct<=10;oct++){
+    for(const iv of ivs){
+      const c=oct*12+k+iv;
+      if(c>=0&&c<=126)scaleNotes.push(c);
+    }
+  }
+  scaleNotes.sort((a,b)=>a-b);
+  // Find index of current note (or nearest) in the sorted list
+  let idx=scaleNotes.indexOf(note);
+  if(idx===-1){
+    idx=scaleNotes.reduce((best,n,i)=>Math.abs(n-note)<Math.abs(scaleNotes[best]-note)?i:best,0);
+  }
+  return scaleNotes[Math.max(0,Math.min(scaleNotes.length-1,idx+delta))];
+}
+
+// ── Saved notes (rest-toggle memory) ─────────────────────────────────────────
+// Keyed by "ti-si". Persists across re-renders so toggling rest/active always
+// restores the last real pitch rather than resetting to C4.
+const savedNote={};
+
+// ── Mute / Solo (client-side only) ───────────────────────────────────────────
+const trackMuted={},trackSolo={};
+const lastSentMuted={};
+let globalMuted=false;
+function isTrackAudible(ti){
+  if(globalMuted)return false;
+  const anySolo=Object.values(trackSolo).some(v=>v);
+  return anySolo?!!trackSolo[ti]:!trackMuted[ti];
+}
+function applyTrackAudibility(){
+  if(!pattern)return;
+  for(let ti=0;ti<pattern.numTracks;ti++){
+    const silenced=!isTrackAudible(ti);
+    const block=document.getElementById('track-'+ti);
+    if(block)block.classList.toggle('silenced',silenced);
+    if(port&&lastSentMuted[ti]!==silenced){
+      lastSentMuted[ti]=silenced;
+      sendMute(ti,silenced);
+    }
+  }
+  const btn=document.getElementById('btnGlobalMute');
+  if(btn)btn.classList.toggle('active',globalMuted);
+}
+function toggleGlobalMute(){
+  globalMuted=!globalMuted;
+  applyTrackAudibility();
+}
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+function logCDC(text,cls){
+  const log=document.getElementById('cdcLog');
+  const span=document.createElement('span');
+  span.className=cls||''; span.textContent=text+'\n';
+  log.appendChild(span); log.scrollTop=log.scrollHeight;
+}
+
+// ── Checklist ─────────────────────────────────────────────────────────────────
+function setCheck(id,state){
+  const el=document.getElementById(id);
+  el.className=state;
+  el.querySelector('.ck').textContent=state==='ok'?'✓':state==='fail'?'✗':'·';
+}
+
+// ── Connection ────────────────────────────────────────────────────────────────
+const CONN_BTNS=['btnTicks','btnDiag','btnGetState','btnDiagPoll','btnDiagAuto',
+                 'btnPlay','btnStop','btnFromStart',
+                 'slot-0','slot-1','slot-2','slot-3','slot-4','slot-5','slot-6','slot-7',
+                 'btnGlobalMute','btnAddTrack','btnGlobalRand','btnPhaseSetup'];
+
+async function connectToPort(p){
+  await p.open({baudRate:115200});
+  port=p;
+  document.getElementById('serialStatus').textContent='connected';
+  document.getElementById('serialStatus').className='status ok';
+  document.getElementById('btnConnect').disabled=true;
+  document.getElementById('btnDisconnect').disabled=false;
+  CONN_BTNS.forEach(id=>document.getElementById(id).disabled=false);
+  document.getElementById('cdcLog').innerHTML='';
+  logCDC('connected','info');
+  setCheck('chk-serial','ok'); setCheck('chk-connect','ok');
+  document.getElementById('connPill').className='conn-pill connected';
+  document.getElementById('connLabel').textContent='connected';
+  // Populate web UI version immediately (static)
+  document.getElementById('ver-webui-str').textContent=WEB_UI_VERSION;
+  document.getElementById('ver-fw').textContent='querying…';
+  document.getElementById('ver-status').style.display='none';
+  setCheck('chk-version','pend');
+  // Clear stale lastSentMuted so applyTrackAudibility() re-syncs mute state to firmware
+  // on the next RSP_STATE → renderEditor() cycle (firmware reboots = mute state lost).
+  for(const k of Object.keys(lastSentMuted))delete lastSentMuted[k];
+  startReadLoop();
+  setTimeout(sendGetVersion,200);
+  setTimeout(sendGetState,400); setTimeout(sendGetSlotBitmap,600);
+  syncTimer=setInterval(sendGetState,2000);
+}
+
+async function connectSerial(){
+  if(!('serial' in navigator)){alert('WebSerial requires Chrome or Edge');return;}
+  try{
+    const p=await navigator.serial.requestPort();
+    await connectToPort(p);
+  }catch(e){logCDC('connection failed: '+e.message,'err');}
+}
+
+// Auto-connect to a previously-granted port on page load (no user gesture needed
+// for ports the user already approved — navigator.serial.getPorts() returns them).
+async function tryAutoConnect(){
+  if(!('serial' in navigator))return;
+  try{
+    const ports=await navigator.serial.getPorts();
+    if(ports.length===0)return;
+    logCDC('auto-connect: trying '+ports.length+' saved port'+(ports.length>1?'s':'')+'…','info');
+    for(const p of ports){
+      try{await connectToPort(p);return;}catch(e){/* try next */}
+    }
+    logCDC('auto-connect: no port responded, click Connect to choose','info');
+  }catch(e){/* silently skip — browser may block outside user gesture */}
+}
+
+async function disconnectSerial(){
+  readLoopRunning=false;
+  _writeQ=Promise.resolve(); // flush queue so reconnect starts clean
+  try{if(reader){await reader.cancel();reader=null;}}catch(e){}
+  try{if(port){await port.close();port=null;}}catch(e){}
+  document.getElementById('serialStatus').textContent='disconnected';
+  document.getElementById('serialStatus').className='status dim';
+  document.getElementById('btnConnect').disabled=false;
+  document.getElementById('btnDisconnect').disabled=true;
+  CONN_BTNS.forEach(id=>document.getElementById(id).disabled=true);
+  document.getElementById('connPill').className='conn-pill disconnected';
+  document.getElementById('connLabel').textContent='disconnected';
+  setCheck('chk-connect','fail');
+  logCDC('disconnected','info');
+  if(diagAutoPoll)toggleAutoPoll();
+  if(syncTimer){clearInterval(syncTimer);syncTimer=null;}
+}
+
+// ── Write helpers ─────────────────────────────────────────────────────────────
+let _writeQ=Promise.resolve();
+async function writeBytes(bytes){
+  if(!port||!port.writable)return;
+  // Serialize all writes: concurrent calls chain onto the queue rather than
+  // racing to getWriter() — a second getWriter() while the first holds the lock
+  // throws, silently dropping the frame.
+  _writeQ=_writeQ.catch(()=>{}).then(async()=>{
+    const w=port.writable.getWriter();
+    try{await w.write(bytes);}finally{w.releaseLock();}
+  });
+  return _writeQ;
+}
+async function sendText(txt){logCDC('→ '+txt.trim(),'tx');await writeBytes(new TextEncoder().encode(txt));}
+function buildFrame(cmd,payload){
+  const n=payload?payload.length:0, f=new Uint8Array(4+n);
+  f[0]=STX;f[1]=cmd;f[2]=n&0xFF;f[3]=n>>8;
+  if(payload)f.set(payload,4); return f;
+}
+async function sendFrame(cmd,payload){await writeBytes(buildFrame(cmd,payload));}
+function sendGetState(){sendFrame(CMD.GET_STATE,null);}
+function sendGetVersion(){sendFrame(CMD.GET_VERSION,null);}
+
+function setClockSource(val){
+  sendFrame(CMD.SET_CLOCK_SOURCE,new Uint8Array([parseInt(val)]));
+}
+function updateClockSourceUI(cs){
+  const sel=document.getElementById('clockSourceSel');
+  if(sel&&cs<=1)sel.value=String(cs);
+}
+function sendTempo(bpm){
+  bpm=Math.max(20,Math.min(300,parseInt(bpm)||120));
+  sendFrame(CMD.SET_TEMPO,new Uint8Array([bpm&0xFF,bpm>>8]));
+}
+function sendSetStep(ti,si,note,gatePct,flags){
+  sendFrame(CMD.SET_STEP,new Uint8Array([ti,si,note&0xFF,gatePct,flags]));
+}
+function sendSetLength(ti,len){sendFrame(CMD.SET_LENGTH,new Uint8Array([ti,len]));}
+function sendMidiEnabled(ti,en){sendFrame(CMD.SET_MIDI_ENABLED,new Uint8Array([ti,en?1:0]));}
+function sendMidiChannel(ti,ch){sendFrame(CMD.SET_MIDI_CHANNEL,new Uint8Array([ti,ch]));}
+function sendMute(ti,muted){
+  logCDC('→ mute T'+(ti+1)+'='+(muted?'on':'off'),'tx');
+  sendFrame(CMD.SET_MUTE,new Uint8Array([ti,muted?1:0]));
+}
+function sendAddTrack(){sendFrame(CMD.ADD_TRACK,null);}
+function sendRemoveTrack(ti){sendFrame(CMD.REMOVE_TRACK,new Uint8Array([ti]));}
+function sendRandomize(ti){
+  const style=randStylePref[ti]||0;
+  const flags=randStructurePref[ti]||0;
+  sendFrame(CMD.RANDOMIZE,new Uint8Array([ti,style,flags]));
+}
+function sendSetShift(ti,sh){sendFrame(CMD.SET_TRACK_SHIFT,new Uint8Array([ti,sh&0xFF]));}
+function sendSnapToScale(ti,key,scale){sendFrame(CMD.SNAP_TO_SCALE,new Uint8Array([ti,key,scale]));}
+function sendTransposeNotes(ti,semitones){sendFrame(CMD.TRANSPOSE_NOTES,new Uint8Array([ti,semitones&0xFF]));}
+function sendUndoRandomize(ti){sendFrame(CMD.UNDO_RANDOMIZE,new Uint8Array([ti]));}
+function sendSetTrackScale(ti,key,scale){sendFrame(CMD.SET_TRACK_SCALE,new Uint8Array([ti,key,scale]));}
+function sendSetGlide(ti,rateMs){rateMs=Math.max(0,Math.min(65535,rateMs|0));sendFrame(CMD.SET_GLIDE,new Uint8Array([ti,rateMs&0xFF,rateMs>>8]));}
+function sendSetArpMode(ti,mode,includeRests){sendFrame(CMD.SET_ARP_MODE,new Uint8Array([ti,(mode&0x7F)|(includeRests?0x80:0)]));}
+function sendSetAccentMode(ti,mode){sendFrame(CMD.SET_ACCENT_MODE,new Uint8Array([ti,mode]));}
+function sendSetMutation(ti,enabled,rateIdx,depthIdx,scaleConstrain){sendFrame(CMD.SET_MUTATION,new Uint8Array([ti,enabled?1:0,rateIdx,depthIdx,scaleConstrain?1:0]));}
+function sendMutationLatch(ti){
+  latchedUnsaved.add(ti);
+  sendFrame(CMD.MUTATION_LATCH,new Uint8Array([ti]));
+}
+function sendGlobalRandomize(style,flags){
+  if(style===undefined){
+    const sel=document.getElementById('globalRandStyle');
+    style=sel?parseInt(sel.value):0;
+  }
+  if(flags===undefined){
+    const chkLen=document.getElementById('globalRandVaryLen');
+    const chkMeter=document.getElementById('globalRandVaryMeter');
+    flags=(chkLen?.checked?1:0)|(chkMeter?.checked?2:0);
+  }
+  sendFrame(CMD.GLOBAL_RANDOMIZE,new Uint8Array([style,flags]));
+}
+function sendGetSlotBitmap(){sendFrame(CMD.GET_SLOT_BITMAP,null);}
+function sendSaveSlot(s){sendFrame(CMD.SAVE_SLOT,new Uint8Array([s]));}
+function sendLoadSlot(s){sendFrame(CMD.LOAD_SLOT,new Uint8Array([s]));}
+
+function setTransport(state){
+  sendFrame(CMD.SET_TRANSPORT,new Uint8Array([state]));
+  transportStopped=(state===1); updateTransportUI();
+}
+function updateTransportUI(){
+  document.getElementById('btnPlay').classList.toggle('active',!transportStopped);
+  document.getElementById('btnStop').classList.toggle('active',transportStopped);
+}
+function updateSlotUI(){
+  for(let i=0;i<8;i++){
+    const btn=document.getElementById('slot-'+i); if(!btn)continue;
+    const used=!!(slotBitmap&(1<<i));
+    btn.classList.toggle('used',used);
+    btn.classList.toggle('last-used',i===lastUsedSlot);
+    btn.title=used?'Click to load · Shift+click to overwrite':'Shift+click to save';
+  }
+}
+function slotClick(slot,evt){
+  const st=document.getElementById('slotStatus');
+  pendingSlot=slot;
+  if(evt.shiftKey){
+    sendSaveSlot(slot);
+    if(st)st.textContent='Saving…';
+  }else{
+    if(!(slotBitmap&(1<<slot))){if(st)st.textContent='Slot '+(slot+1)+' empty — shift+click to save';return;}
+    sendLoadSlot(slot);
+    if(st)st.textContent='Loading…';
+  }
+}
+
+// ── Global Randomize ──────────────────────────────────────────────────────────
+function globalRandomize(){
+  sendGlobalRandomize();
+  const sel=document.getElementById('globalRandStyle');
+  const styleName=sel?sel.options[sel.selectedIndex].text:'Melodic';
+  logCDC('→ Global Randomize ('+styleName+')','tx');
+}
+
+// ── Eno Phase Setup ───────────────────────────────────────────────────────────
+// Coprime length pairs/triples/quads with LCM (steps before realignment).
+// gcd helper
+function gcd(a,b){while(b){const t=b;b=a%b;a=t;}return a;}
+function lcmOf(arr){return arr.reduce((a,b)=>Math.round(a*b/gcd(a,b)),1);}
+
+const PHASE_PRESETS={
+  2:[
+    {lengths:[7,11]},{lengths:[7,13]},{lengths:[11,13]},{lengths:[8,11]},
+    {lengths:[8,9]},{lengths:[7,9]},{lengths:[12,11]},{lengths:[16,13]},
+    {lengths:[9,16]},{lengths:[7,8]}
+  ],
+  3:[
+    {lengths:[7,11,13]},{lengths:[8,11,13]},{lengths:[7,8,11]},
+    {lengths:[9,11,13]},{lengths:[11,12,13]},{lengths:[7,11,16]},
+    {lengths:[8,9,11]},{lengths:[7,9,13]}
+  ],
+  4:[
+    {lengths:[7,11,13,16]},{lengths:[7,11,13,17]},{lengths:[8,11,13,16]},
+    {lengths:[7,8,11,13]},{lengths:[9,11,13,16]},{lengths:[7,9,11,13]}
+  ]
+};
+
+let phasePanelOpen=false;
+function togglePhasePanel(){
+  phasePanelOpen=!phasePanelOpen;
+  const panel=document.getElementById('phasePanel');
+  const btn=document.getElementById('btnPhaseSetup');
+  panel.style.display=phasePanelOpen?'':'none';
+  btn.classList.toggle('active',phasePanelOpen);
+  if(phasePanelOpen) buildPhasePresets();
+}
+
+function buildPhasePresets(){
+  const container=document.getElementById('phasePresets');
+  container.innerHTML='';
+  // Use numTracks from last parsed state, clamped to 2-4
+  const n=Math.max(2,Math.min(4,(pattern&&pattern.numTracks)||2));
+  const presets=(PHASE_PRESETS[n]||PHASE_PRESETS[2]).map(p=>({...p,lcm:lcmOf(p.lengths)}));
+  presets.sort((a,b)=>a.lcm-b.lcm); // shortest LCM first
+  if(presets.length===0){
+    container.textContent='No presets for '+n+' tracks.'; return;
+  }
+  presets.forEach(p=>{
+    const row=document.createElement('div');
+    row.className='phase-preset-row';
+    const label=p.lengths.map((l,i)=>'T'+(i+1)+'='+l).join(', ');
+    row.innerHTML=
+      '<span class="phase-lengths">'+label+'</span>'+
+      '<span class="phase-lcm">LCM '+p.lcm+'</span>'+
+      '<button class="phase-apply-btn" onclick="applyPhasePreset('+JSON.stringify(p.lengths)+')">Apply</button>';
+    container.appendChild(row);
+  });
+}
+
+function bestBarSizeFor(len){
+  // Largest divisor ≤ min(len,8) that gives ≥ 2 bars.
+  // Returns null for prime-ish lengths (no clean divisor) — use irregular instead.
+  for(let d=Math.min(len,8);d>=2;d--){
+    if(len%d===0&&Math.floor(len/d)>=2)return d;
+  }
+  return null;
+}
+function irregularGroupsFor(len){
+  // Decompose a prime-ish length into groups of 3 and 4 (no remainder of 1).
+  // Mirrors GenerateIrregularGroups() in sequencer.cpp but deterministic (no RNG).
+  const groups=[];
+  let rem=len;
+  while(rem>0&&groups.length<8){
+    if(groups.length===7||rem<=5){groups.push(rem);rem=0;break;}
+    // Prefer 4 if divisible, else 3; avoid leaving remainder 1
+    let pick=(rem%3===0)?3:(rem%4===0)?4:(rem%2===0)?4:3;
+    if(rem-pick===1)pick=pick===3?4:3; // swap to avoid stranding 1
+    if(pick>rem)pick=rem;
+    groups.push(pick); rem-=pick;
+  }
+  return groups;
+}
+function applyPhasePreset(lengths){
+  for(let ti=0;ti<lengths.length;ti++){
+    sendSetLength(ti,lengths[ti]);
+    const reg=bestBarSizeFor(lengths[ti]);
+    if(reg!==null){
+      sendFrame(CMD.SET_TIMESIG_REGULAR,new Uint8Array([ti,reg]));
+    } else {
+      const groups=irregularGroupsFor(lengths[ti]);
+      sendFrame(CMD.SET_TIMESIG_IRREGULAR,new Uint8Array([ti,groups.length,...groups]));
+    }
+  }
+  // Close the panel after applying
+  phasePanelOpen=false;
+  document.getElementById('phasePanel').style.display='none';
+  document.getElementById('btnPhaseSetup').classList.remove('active');
+  logCDC('→ Phase preset applied: ['+lengths.join(',')+'] LCM='+lcmOf(lengths),'tx');
+}
+
+// ── Binary receive loop ───────────────────────────────────────────────────────
+async function startReadLoop(){
+  readLoopRunning=true; rxBuf=new Uint8Array(0);
+  while(port&&port.readable&&readLoopRunning){
+    try{
+      reader=port.readable.getReader();
+      while(readLoopRunning){
+        const{value,done}=await reader.read();
+        if(done)break;
+        const m=new Uint8Array(rxBuf.length+value.length);
+        m.set(rxBuf); m.set(value,rxBuf.length); rxBuf=m;
+        processRxBuf();
+      }
+    }catch(e){if(readLoopRunning)logCDC('read error: '+e.message,'err');}
+    finally{if(reader){try{reader.releaseLock();}catch(e){}reader=null;}}
+  }
+}
+function processRxBuf(){
+  while(rxBuf.length>0){
+    if(rxBuf[0]===STX){
+      if(rxBuf.length<4)break;
+      const paylen=rxBuf[2]|(rxBuf[3]<<8),total=4+paylen;
+      if(rxBuf.length<total)break;
+      handleFrame(rxBuf[1],rxBuf.slice(4,total));
+      rxBuf=rxBuf.slice(total);
+    }else{
+      const nl=rxBuf.indexOf(0x0A);
+      if(nl===-1){if(rxBuf.length>512)rxBuf=new Uint8Array(0);break;}
+      handleTextLine(new TextDecoder().decode(rxBuf.slice(0,nl+1)).trimEnd());
+      rxBuf=rxBuf.slice(nl+1);
+    }
+  }
+}
+function handleTextLine(line){
+  logCDC('← '+line,'rx'); setCheck('chk-echo','ok');
+  if(line.startsWith('ticks=')){if(parseInt(line.slice(6))>0)setCheck('chk-core1','ok');}
+  if(line.includes('midi=1'))setCheck('chk-midi','ok');
+  if(line.startsWith('proc=')&&diagPending){diagPending=false;applyDiag(parseDiag(line));}
+}
+function handleFrame(cmd,payload){
+  setCheck('chk-echo','ok');
+  if(cmd===RSP.ACK){
+    const orig=payload.length>0?payload[0]:0;
+    if(orig===CMD.SET_MUTE)logCDC('← ACK mute','rx');
+    const st=document.getElementById('slotStatus');
+    if(orig===CMD.SAVE_SLOT){
+      latchedUnsaved.clear();
+      document.querySelectorAll('.gen-btn.latch-unsaved').forEach(b=>b.classList.remove('latch-unsaved'));
+      lastUsedSlot=pendingSlot; sendGetSlotBitmap(); updateSlotUI();
+      if(st)st.textContent='Saved ✓';
+      setTimeout(()=>{if(st)st.textContent='';},3000);
+    }else if(orig===CMD.LOAD_SLOT){
+      latchedUnsaved.clear();
+      lastUsedSlot=pendingSlot; updateSlotUI();
+      if(st)st.textContent='Loaded ✓';
+      setTimeout(()=>{if(st)st.textContent='';},3000);
+      // Firmware RAM undo snapshots are gone after a load — clear web UI state
+      for(let ti=0;ti<(pattern?pattern.numTracks:8);ti++){
+        trackUndoAvailable[ti]=false;
+        const ub=document.getElementById('undo-'+ti);
+        if(ub)ub.disabled=true;
+      }
+    }
+  }else if(cmd===RSP.SLOT_BITMAP){
+    slotBitmap=payload.length>0?payload[0]:0; updateSlotUI();
+  }else if(cmd===RSP.NACK){
+    logCDC('← NACK cmd=0x'+payload[0].toString(16)+' reason='+payload[1],'err');
+    sendGetState();
+  }else if(cmd===RSP.STATE){
+    const unchanged=lastStateBytes&&payload.length===lastStateBytes.length&&
+      payload.every((b,i)=>b===lastStateBytes[i]);
+    const footerFocused=!!(document.activeElement&&document.activeElement.closest&&
+                            document.activeElement.closest('.footer-tab-panels,.footer-tabs'));
+    if(!unchanged&&!ribbonDragging&&!footerFocused){
+      lastStateBytes=payload.slice(); pattern=parseState(payload);
+      renderEditor();
+      document.getElementById('editorStatus').textContent=
+        pattern.numTracks+' track'+(pattern.numTracks>1?'s':'')+' · '+new Date().toLocaleTimeString();
+    }
+  }else if(cmd===RSP.PANEL_STATE){
+    if(payload.length>=3)updatePanelFocus(payload[0],payload[1],payload[2]);
+  }else if(cmd===RSP.PLAYHEAD){
+    updatePlayheads(payload);
+  }else if(cmd===RSP.TEMPO){
+    if(payload.length>=2){
+      const bpm=payload[0]|(payload[1]<<8);
+      document.getElementById('tempoInput').value=bpm;
+      if(pattern)pattern.bpm=bpm;
+    }
+    if(payload.length>=3){updateClockSourceUI(payload[2]);if(pattern)pattern.clockSource=payload[2];}
+  }else if(cmd===RSP.VERSION){
+    if(payload.length>=3){
+      const [maj,min,pat]=payload;
+      document.getElementById('ver-fw').textContent=`v${maj}.${min}.${pat}`;
+      const ok=(maj===EXPECTED_FW.major&&min===EXPECTED_FW.minor);
+      const st=document.getElementById('ver-status');
+      if(ok){
+        setCheck('chk-version','ok');
+        st.style.display='none';
+      }else{
+        setCheck('chk-version','fail');
+        st.style.display='block';
+        st.style.color='var(--err,#e55)';
+        st.textContent=`⚠ Firmware v${maj}.${min}.${pat} does not match web UI (expects v${EXPECTED_FW.major}.${EXPECTED_FW.minor}.x) — reflash recommended`;
+      }
+      logCDC(`← version fw=${maj}.${min}.${pat} webui=${WEB_UI_VERSION} ${ok?'✓ match':'⚠ MISMATCH'}`,ok?'info':'err');
+    }
+  }
+}
+
+// ── State parsing ─────────────────────────────────────────────────────────────
+function parseState(bytes){
+  let pos=0;
+  const numTracks=bytes[pos++], bpm=bytes[pos++]|(bytes[pos++]<<8), clockSource=bytes[pos++];
+  const tracks=[];
+  for(let ti=0;ti<numTracks;ti++){
+    const length=bytes[pos++],midiChannel=bytes[pos++],midiEnabled=bytes[pos++]!==0,
+          key=bytes[pos++],scale=bytes[pos++];
+    const shiftByte=bytes[pos++];
+    const shift=shiftByte>=128?shiftByte-256:shiftByte; // sign-extend uint8 → int8
+    const portaRateMs=(bytes[pos++]|(bytes[pos++]<<8));
+    const arpByte=bytes[pos++]||0;
+    const arpMode=arpByte&0x7F, arpIncludeRests=(arpByte&0x80)!==0;
+    const accentOutMode=bytes[pos++]||0;
+    const timeSigNum=bytes[pos++]||4;
+    const timeSigMode=bytes[pos++]||0; // 0=Regular 1=Irregular
+    const irregularGroupCount=bytes[pos++]||0;
+    const irregularGroups=[];
+    for(let gi=0;gi<8;gi++)irregularGroups.push(bytes[pos++]||0);
+    const mutEnabled=bytes[pos++]!==0;
+    const mutRateIdx=bytes[pos++]||0;
+    const mutDepthIdx=bytes[pos++]||0;
+    const mutScaleConstrain=bytes[pos++]!==0;
+    const steps=[];
+    for(let si=0;si<length;si++){
+      const rawNote=bytes[pos++],gateLenPct=bytes[pos++],flags=bytes[pos++];
+      steps.push({note:rawNote===WIRE_REST?-1:rawNote,gateLenPct,
+        tied:(flags&STEP_FLAG_TIED)!==0,accent:(flags&STEP_FLAG_ACCENT)!==0,
+        ratchetCount:((flags>>2)&7)+1,probability:(flags>>5)&7});
+    }
+    tracks.push({length,midiChannel,midiEnabled,key,scale,shift,portaRateMs,arpMode,arpIncludeRests,accentOutMode,timeSigNum,timeSigMode,irregularGroupCount,irregularGroups,mutEnabled,mutRateIdx,mutDepthIdx,mutScaleConstrain,steps});
+  }
+  return{numTracks,bpm,clockSource,tracks};
+}
+
+// ── Track management helpers ──────────────────────────────────────────────────
+let lastRenderedNumTracks=0;
+
+// Shift per-track client state down when a track at removedTi is removed.
+function shiftTrackState(removedTi,newCount){
+  for(let ti=removedTi;ti<newCount;ti++){
+    trackMuted[ti]=trackMuted[ti+1]||false;
+    trackSolo[ti]=trackSolo[ti+1]||false;
+    lastSentMuted[ti]=undefined;
+    trackUndoAvailable[ti]=trackUndoAvailable[ti+1]||false;
+    drawScaleKey[ti]=drawScaleKey[ti+1];
+    drawScaleIdx[ti]=drawScaleIdx[ti+1];
+    drawScaleOn[ti]=drawScaleOn[ti+1];
+    glideMaxPerTrack[ti]=glideMaxPerTrack[ti+1];
+    trackFooterTab[ti]=trackFooterTab[ti+1];
+    randStylePref[ti]=randStylePref[ti+1];
+    randStructurePref[ti]=randStructurePref[ti+1];
+    barSizes[ti]=barSizes[ti+1];
+    barMode[ti]=barMode[ti+1];
+    barGroups[ti]=barGroups[ti+1];
+    barStartCache[ti]=undefined;
+  }
+  delete trackMuted[newCount]; delete trackSolo[newCount]; delete lastSentMuted[newCount];
+  delete trackUndoAvailable[newCount];
+  delete drawScaleKey[newCount]; delete drawScaleIdx[newCount]; delete drawScaleOn[newCount];
+  delete glideMaxPerTrack[newCount];
+  delete trackFooterTab[newCount];
+  delete randStylePref[newCount];
+  delete randStructurePref[newCount];
+  delete barSizes[newCount]; delete barMode[newCount]; delete barGroups[newCount];
+  delete barStartCache[newCount];
+  // Shift savedNote keys
+  const toShift=Object.keys(savedNote).filter(k=>parseInt(k.split('-')[0])>removedTi);
+  for(const k of toShift){
+    const [t,s]=k.split('-');
+    savedNote[(parseInt(t)-1)+'-'+s]=savedNote[k];
+    delete savedNote[k];
+  }
+  const atRemoved=Object.keys(savedNote).filter(k=>parseInt(k.split('-')[0])===removedTi);
+  for(const k of atRemoved)delete savedNote[k];
+}
+
+function addTrack(){
+  if(!pattern||pattern.numTracks>=4)return;
+  sendAddTrack();
+}
+
+function animateRemoveTrack(ti){
+  const block=document.getElementById('track-'+ti);
+  if(block)block.classList.add('leaving');
+  shiftTrackState(ti,pattern.numTracks-1);
+  setTimeout(()=>sendRemoveTrack(ti),230);
+}
+
+// ── Editor rendering ──────────────────────────────────────────────────────────
+function renderEditor(){
+  if(!pattern)return;
+  document.getElementById('tempoInput').value=pattern.bpm;
+  updateClockSourceUI(pattern.clockSource);
+  const prevCount=lastRenderedNumTracks;
+  lastRenderedNumTracks=pattern.numTracks;
+  const container=document.getElementById('tracksContainer');
+  container.innerHTML='';
+  for(let ti=0;ti<pattern.numTracks;ti++)container.appendChild(buildTrackBlock(ti));
+  // Animate newly added tracks
+  if(pattern.numTracks>prevCount){
+    for(let ti=prevCount;ti<pattern.numTracks;ti++){
+      const block=document.getElementById('track-'+ti);
+      if(block){
+        block.classList.add('entering');
+        requestAnimationFrame(()=>requestAnimationFrame(()=>block.classList.remove('entering')));
+      }
+    }
+  }
+  // Update Add Track button disabled state
+  const addBtn=document.getElementById('btnAddTrack');
+  if(addBtn)addBtn.disabled=!port||pattern.numTracks>=4;
+  // Re-apply panel focus classes lost when innerHTML was cleared
+  if(panelFocusTrack>=0){
+    const block=document.getElementById('track-'+panelFocusTrack);
+    if(block)block.classList.add('panel-focused');
+    if(panelFocusStep>=0){
+      const cell=document.getElementById('cell-'+panelFocusTrack+'-'+panelFocusStep);
+      if(cell)cell.classList.add('panel-focused');
+    }
+  }
+  // Re-sync mute/solo state to firmware — needed on first render after connect
+  // (firmware reboots clear gTrackMuted; clearing lastSentMuted on connect ensures
+  // this call always re-sends the current trackMuted[] state).
+  applyTrackAudibility();
+}
+
+function buildTrackBlock(ti){
+  const t=pattern.tracks[ti];
+  // Sync bar state from firmware before ribbon is built — ribbon uses getBarStarts()
+  // which reads barSizes[ti]/barGroups[ti], so this must happen before the ribbon DOM is created.
+  barSizes[ti]=t.timeSigNum||4;
+  barMode[ti]=['regular','irregular'][t.timeSigMode]||'regular';
+  if(t.timeSigMode===1&&t.irregularGroupCount>0)
+    barGroups[ti]=t.irregularGroups.slice(0,t.irregularGroupCount);
+  invalidateBarStarts(ti);
+
+  const block=document.createElement('div');
+  block.className='track-block'+(isTrackAudible(ti)?'':' silenced');
+  block.id='track-'+ti;
+
+  // ── Header row ──────────────────────────────────────────────────────────────
+  const head=document.createElement('div');
+  head.className='track-head';
+
+  const name=document.createElement('span');
+  name.className='track-name'; name.textContent='Track '+(ti+1);
+
+  const badge=document.createElement('span');
+  badge.className='track-badge'+(ti<2?' cv':'');
+  badge.textContent=ti<2?'CV+MIDI':'MIDI';
+
+  const midiBtn=document.createElement('button');
+  midiBtn.className='midi-toggle'+(t.midiEnabled?' on':'');
+  midiBtn.textContent=t.midiEnabled?'MIDI on':'MIDI off';
+  midiBtn.onclick=()=>{
+    const en=!pattern.tracks[ti].midiEnabled;
+    pattern.tracks[ti].midiEnabled=en; sendMidiEnabled(ti,en);
+    midiBtn.className='midi-toggle'+(en?' on':'');
+    midiBtn.textContent=en?'MIDI on':'MIDI off';
+  };
+
+  const muteBtn=document.createElement('button');
+  muteBtn.className='mute-btn'+(trackMuted[ti]?' active':'');
+  muteBtn.textContent='Mute';
+  muteBtn.onclick=()=>{
+    trackMuted[ti]=!trackMuted[ti];
+    muteBtn.classList.toggle('active',!!trackMuted[ti]);
+    sendMute(ti,trackMuted[ti]);
+    applyTrackAudibility();
+  };
+
+  const soloBtn=document.createElement('button');
+  soloBtn.className='solo-btn'+(trackSolo[ti]?' active':'');
+  soloBtn.textContent='Solo';
+  soloBtn.onclick=()=>{
+    trackSolo[ti]=!trackSolo[ti];
+    soloBtn.classList.toggle('active',!!trackSolo[ti]);
+    applyTrackAudibility();
+  };
+
+  const randBtn=document.createElement('button');
+  randBtn.textContent='Randomize';
+  randBtn.style.cssText='font-size:11px;padding:2px 8px;margin-left:auto';
+  randBtn.onclick=()=>{
+    sendRandomize(ti);
+    trackUndoAvailable[ti]=true;
+    const ub=document.getElementById('undo-'+ti);
+    if(ub)ub.disabled=false;
+  };
+
+  const undoBtn=document.createElement('button');
+  undoBtn.id='undo-'+ti;
+  undoBtn.textContent='↩ Undo';
+  undoBtn.style.cssText='font-size:11px;padding:2px 8px;';
+  undoBtn.disabled=!trackUndoAvailable[ti];
+  undoBtn.onclick=()=>{
+    sendUndoRandomize(ti);
+    trackUndoAvailable[ti]=false;
+    undoBtn.disabled=true;
+  };
+
+  const removeBtn=document.createElement('button');
+  removeBtn.className='remove-btn';
+  removeBtn.textContent='Remove';
+  removeBtn.disabled=!pattern||pattern.numTracks<=1;
+  removeBtn.onclick=()=>animateRemoveTrack(ti);
+
+  head.append(name,badge,midiBtn,muteBtn,soloBtn,randBtn,undoBtn,removeBtn);
+  block.appendChild(head);
+
+  // ── Ribbon ──────────────────────────────────────────────────────────────────
+  const cols=`repeat(${t.length},1fr)`;
+
+  const ribbon=document.createElement('div');
+  ribbon.className='ribbon'; ribbon.id='ribbon-'+ti;
+  ribbon.style.gridTemplateColumns=cols;
+  for(let si=0;si<t.length;si++)ribbon.appendChild(buildStepCell(ti,si));
+  addRibbonPointerHandlers(ribbon,ti);
+  block.appendChild(ribbon);
+
+  const gateStrip=document.createElement('div');
+  gateStrip.className='gate-strip'; gateStrip.id='gate-strip-'+ti;
+  gateStrip.style.gridTemplateColumns=cols;
+  for(let si=0;si<t.length;si++)gateStrip.appendChild(buildGateSeg(ti,si));
+  block.appendChild(gateStrip);
+
+  const probStrip=document.createElement('div');
+  probStrip.className='prob-strip'; probStrip.id='prob-strip-'+ti;
+  probStrip.style.gridTemplateColumns=cols;
+  for(let si=0;si<t.length;si++)probStrip.appendChild(buildProbSeg(ti,si));
+  block.appendChild(probStrip);
+
+  // ── Help panel (always-on modifier key reference) ───────────────────────────
+  const help=document.createElement('div');
+  help.className='track-help';
+  help.innerHTML=
+    '<span class="kbd">Click</span><span>pitch / rest</span>'+
+    '<span class="kbd">Ctrl+click</span><span>tie</span>'+
+    '<span class="kbd">Alt+click</span><span>accent</span>'+
+    '<span class="track-help-sep"></span>'+
+    '<span class="kbd">Drag →</span><span>paint</span>'+
+    '<span class="kbd">Drag ↕</span><span>pitch</span>'+
+    '<span class="track-help-sep"></span>'+
+    '<span class="kbd">Scroll</span><span>±semitone</span>'+
+    '<span class="kbd">Shift+scroll</span><span>ratchet</span>'+
+    '<span class="track-help-sep"></span>'+
+    '<span class="kbd">Gate drag ↕</span><span>gate length</span>'+
+    '<span class="kbd">Gate scroll</span><span>±5%</span>'+
+    '<span class="track-help-sep"></span>'+
+    '<span class="kbd">Prob drag ↕</span><span>step probability</span>'+
+    '<span class="kbd">Prob scroll</span><span>±1 level</span>';
+  block.appendChild(help);
+
+  // ── Footer ──────────────────────────────────────────────────────────────────
+  const footer=document.createElement('div');
+  footer.className='track-footer';
+
+  // Length
+  const lenCtrl=document.createElement('div'); lenCtrl.className='ctrl-small';
+  const decBtn=document.createElement('button'); decBtn.textContent='−'; decBtn.onclick=()=>changeLength(ti,-1);
+  const lenIn=document.createElement('input');
+  lenIn.type='number'; lenIn.min=1; lenIn.max=64; lenIn.value=t.length; lenIn.id='len-'+ti;
+  lenIn.onchange=()=>changeLength(ti,0,parseInt(lenIn.value));
+  const incBtn=document.createElement('button'); incBtn.textContent='+'; incBtn.onclick=()=>changeLength(ti,+1);
+  const lenLbl=document.createElement('label'); lenLbl.textContent='Length';
+  const stepsLbl=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','steps');
+  lenCtrl.append(lenLbl,decBtn,lenIn,incBtn,stepsLbl);
+
+  // Bar / time signature — regular or irregular
+  const barCtrl=document.createElement('div'); barCtrl.className='ctrl-small';
+  const barLbl=document.createElement('label'); barLbl.textContent='Bar';
+
+  const barModeSel=document.createElement('select');
+  [['regular','Regular'],['irregular','Irregular']].forEach(([v,t])=>{
+    const o=document.createElement('option'); o.value=v; o.textContent=t; barModeSel.appendChild(o);
+  });
+  barModeSel.value=barMode[ti];
+
+  // Regular sub-control: single number
+  const barRegWrap=document.createElement('span');
+  barRegWrap.style.cssText='display:flex;align-items:center;gap:4px;';
+  const barIn=document.createElement('input');
+  barIn.type='number'; barIn.min=1; barIn.max=32; barIn.value=getBarSize(ti);
+  barIn.style.width='44px'; barIn.id='bar-'+ti;
+  barIn.onchange=()=>{
+    const v=Math.max(1,Math.min(32,parseInt(barIn.value)||4));
+    barIn.value=v; barSizes[ti]=v;
+    sendFrame(CMD.SET_TIMESIG_REGULAR,new Uint8Array([ti,v]));
+    invalidateBarStarts(ti); rebuildRibbons(ti);
+  };
+  barRegWrap.append(barIn,mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','steps/bar'));
+
+  // Irregular sub-control: freeform groups entry
+  const barIrrWrap=document.createElement('span');
+  barIrrWrap.style.cssText='display:none;align-items:center;gap:4px;';
+  const barIrrIn=document.createElement('input');
+  barIrrIn.type='text'; barIrrIn.placeholder='3+3+2'; barIrrIn.id='barirr-'+ti;
+  barIrrIn.style.cssText='width:88px;font-size:12px;padding:3px 6px;font-family:var(--mono);';
+  if(barGroups[ti])barIrrIn.value=barGroups[ti].join('+');
+  barIrrIn.oninput=()=>{
+    const parts=barIrrIn.value.split(/[+,\s]+/).map(Number).filter(n=>Number.isInteger(n)&&n>=1&&n<=32);
+    if(parts.length){barGroups[ti]=parts; invalidateBarStarts(ti); rebuildRibbons(ti);}
+  };
+  barIrrWrap.append(barIrrIn,mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','groups'));
+
+  function syncBarMode(m){
+    barRegWrap.style.display=m==='regular'?'flex':'none';
+    barIrrWrap.style.display=m==='irregular'?'flex':'none';
+  }
+  syncBarMode(barModeSel.value);
+  barModeSel.onchange=()=>{
+    barMode[ti]=barModeSel.value; syncBarMode(barModeSel.value);
+    invalidateBarStarts(ti); rebuildRibbons(ti);
+  };
+  barCtrl.append(barLbl,barModeSel,barRegWrap,barIrrWrap);
+
+  // MIDI channel
+  const chCtrl=document.createElement('div'); chCtrl.className='ctrl-small';
+  const chLbl=document.createElement('label'); chLbl.textContent='MIDI ch';
+  const chIn=document.createElement('input');
+  chIn.type='number'; chIn.min=1; chIn.max=16; chIn.value=t.midiChannel||1; chIn.id='ch-'+ti;
+  chIn.style.width='44px';
+  chIn.onchange=()=>{
+    const ch=Math.max(1,Math.min(16,parseInt(chIn.value)||1));
+    chIn.value=ch; pattern.tracks[ti].midiChannel=ch; sendMidiChannel(ti,ch);
+  };
+  chCtrl.append(chLbl,chIn);
+
+  // Draw scale: key + scale type.
+  // Always sync key/scale from firmware (source of truth; updated on preset load/randomize).
+  // drawScaleOn is client-side-only (no firmware field for it) — only init once.
+  const scaleFirstSeen=drawScaleOn[ti]===undefined;
+  drawScaleKey[ti]=t.key||0;
+  drawScaleIdx[ti]=t.scale!==undefined?t.scale:SCALE_CHROMATIC_IDX;
+  if(scaleFirstSeen)drawScaleOn[ti]=true;
+
+  const scaleCtrl=document.createElement('div'); scaleCtrl.className='ctrl-small';
+  const scaleLbl=document.createElement('label'); scaleLbl.textContent='Scale';
+  const keySel=document.createElement('select'); keySel.id='key-'+ti;
+  ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].forEach((n,i)=>{
+    const o=document.createElement('option'); o.value=i; o.textContent=n; keySel.appendChild(o);
+  });
+  keySel.value=String(drawScaleKey[ti]);
+  keySel.onchange=()=>{
+    drawScaleKey[ti]=parseInt(keySel.value);
+    sendSetTrackScale(ti,drawScaleKey[ti],drawScaleIdx[ti]);
+  };
+
+  const scaleSel=document.createElement('select'); scaleSel.id='scale-'+ti;
+  SCALE_NAMES.forEach((n,i)=>{
+    const o=document.createElement('option'); o.value=i; o.textContent=n; scaleSel.appendChild(o);
+  });
+  scaleSel.value=String(drawScaleIdx[ti]);
+  scaleSel.onchange=()=>{
+    drawScaleIdx[ti]=parseInt(scaleSel.value);
+    sendSetTrackScale(ti,drawScaleKey[ti],drawScaleIdx[ti]);
+  };
+
+  const scaleToggle=document.createElement('button');
+  scaleToggle.style.cssText='font-size:11px;padding:2px 8px;';
+  function syncScaleToggle(){
+    const on=drawScaleOn[ti]!==false;
+    scaleToggle.textContent=on?'On':'Off';
+    scaleToggle.classList.toggle('midi-toggle',true);
+    scaleToggle.classList.toggle('on',on);
+  }
+  syncScaleToggle();
+  scaleToggle.onclick=()=>{
+    drawScaleOn[ti]=drawScaleOn[ti]===false;
+    if(drawScaleOn[ti]){
+      sendSetTrackScale(ti,drawScaleKey[ti]||0,drawScaleIdx[ti]||0);
+      sendSnapToScale(ti,drawScaleKey[ti]||0,drawScaleIdx[ti]||0);
+    }
+    syncScaleToggle();
+  };
+  const snapBtn=document.createElement('button');
+  snapBtn.textContent='Snap ▶';
+  snapBtn.title='Rewrite all notes to nearest note in the selected scale';
+  snapBtn.style.cssText='font-size:11px;padding:2px 8px;';
+  snapBtn.onclick=()=>sendSnapToScale(ti,drawScaleKey[ti]||0,drawScaleIdx[ti]||0);
+  scaleCtrl.append(scaleLbl,keySel,scaleSel,scaleToggle,snapBtn);
+
+  // Live Shift — non-destructive semitone offset applied at output time
+  const shiftCtrl=document.createElement('div'); shiftCtrl.className='ctrl-small';
+  const shiftLbl=document.createElement('label'); shiftLbl.textContent='Live Shift';
+  shiftLbl.title='Moves output pitch without changing stored notes';
+  const shiftDecBtn=document.createElement('button'); shiftDecBtn.textContent='−';
+  const shiftIn=document.createElement('input');
+  shiftIn.type='number'; shiftIn.min=-24; shiftIn.max=24;
+  shiftIn.value=t.shift||0; shiftIn.id='shift-'+ti; shiftIn.style.width='48px';
+  const shiftIncBtn=document.createElement('button'); shiftIncBtn.textContent='+';
+  const shiftSemi=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','semi');
+  function applyShift(v){
+    v=Math.max(-24,Math.min(24,v));
+    shiftIn.value=v;
+    pattern.tracks[ti].shift=v;
+    sendSetShift(ti,v);
+  }
+  shiftDecBtn.onclick=()=>applyShift((parseInt(shiftIn.value)||0)-1);
+  shiftIncBtn.onclick=()=>applyShift((parseInt(shiftIn.value)||0)+1);
+  shiftIn.onchange=()=>applyShift(parseInt(shiftIn.value)||0);
+  shiftCtrl.append(shiftLbl,shiftDecBtn,shiftIn,shiftIncBtn,shiftSemi);
+
+  // Transpose Notes — destructive one-shot semitone shift of stored notes
+  const transpCtrl=document.createElement('div'); transpCtrl.className='ctrl-small';
+  const transpLbl=document.createElement('label'); transpLbl.textContent='Transpose';
+  transpLbl.title='Permanently shifts all stored notes by this many semitones';
+  const transpIn=document.createElement('input');
+  transpIn.type='number'; transpIn.min=-24; transpIn.max=24; transpIn.value=0;
+  transpIn.style.width='48px'; transpIn.id='transp-'+ti;
+  const transpSemi=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','semi');
+  const transpApply=document.createElement('button');
+  transpApply.textContent='Apply';
+  transpApply.title='Write semitone offset into stored notes (destructive)';
+  transpApply.onclick=()=>{
+    const v=parseInt(transpIn.value)||0;
+    if(v===0)return;
+    sendTransposeNotes(ti,v);
+    transpIn.value=0;
+  };
+  transpCtrl.append(transpLbl,transpIn,transpSemi,transpApply);
+
+  // Glide (portamento) — CV-only smooth pitch sweep between steps
+  const glideCtrl=document.createElement('div'); glideCtrl.className='ctrl-small';
+  const glideLbl=document.createElement('label'); glideLbl.textContent='Glide';
+  glideLbl.title='CV sweep time between pitches (0 = off). MIDI output stays at integer notes.';
+  const glideSlider=document.createElement('input');
+  glideSlider.type='range'; glideSlider.min=0;
+  const glideMaxMs=()=>parseInt(glideMaxIn.value)||2000;
+  const glideInitMs=Math.min(t.portaRateMs||0,10000);
+  const glideDefaultMax=Math.max(2000,Math.ceil(glideInitMs/500)*500);
+  if(glideMaxPerTrack[ti]===undefined||glideMaxPerTrack[ti]<glideInitMs)glideMaxPerTrack[ti]=glideDefaultMax;
+  const glideMaxVal=glideMaxPerTrack[ti];
+  glideSlider.max=glideMaxVal; glideSlider.step=10; glideSlider.value=glideInitMs;
+  glideSlider.style.width='90px';
+  const glideNumIn=document.createElement('input');
+  glideNumIn.type='number'; glideNumIn.min=0; glideNumIn.max=65535;
+  glideNumIn.value=glideInitMs; glideNumIn.style.width='52px';
+  const glideMs=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','ms');
+  const glideMaxLbl=mk('span','font-size:10px;color:var(--dim)','max:');
+  const glideMaxIn=document.createElement('input');
+  glideMaxIn.type='number'; glideMaxIn.min=500; glideMaxIn.max=60000; glideMaxIn.step=500;
+  glideMaxIn.value=glideMaxVal; glideMaxIn.style.width='52px';
+  glideMaxIn.title='Upper bound of glide slider (ms)';
+  function applyGlide(ms){
+    ms=Math.max(0,Math.min(65535,ms|0));
+    glideSlider.value=Math.min(ms,parseInt(glideSlider.max));
+    glideNumIn.value=ms;
+    pattern.tracks[ti].portaRateMs=ms;
+    sendSetGlide(ti,ms);
+  }
+  glideMaxIn.onchange=()=>{
+    const newMax=Math.max(500,parseInt(glideMaxIn.value)||2000);
+    glideMaxPerTrack[ti]=newMax;
+    glideMaxIn.value=newMax; glideSlider.max=newMax;
+    glideSlider.value=Math.min(parseInt(glideNumIn.value)||0,newMax);
+  };
+  glideSlider.oninput=()=>{glideNumIn.value=glideSlider.value;applyGlide(parseInt(glideSlider.value));};
+  glideNumIn.onchange=()=>{
+    const v=Math.max(0,parseInt(glideNumIn.value)||0);
+    if(v>parseInt(glideSlider.max)){glideMaxPerTrack[ti]=v;glideSlider.max=v;glideMaxIn.value=v;}
+    applyGlide(v);
+  };
+  glideCtrl.append(glideLbl,glideSlider,glideNumIn,glideMs,glideMaxLbl,glideMaxIn);
+
+  // Arp mode selector + include-rests toggle
+  const arpCtrl=document.createElement('div'); arpCtrl.className='ctrl-small';
+  const arpLbl=document.createElement('label'); arpLbl.textContent='Arp';
+  arpLbl.title='Playback order of steps. Converge/Diverge sort by pitch.';
+  const arpSel=document.createElement('select'); arpSel.style.fontSize='11px';
+  ARP_MODE_NAMES.forEach((name,i)=>{
+    const opt=document.createElement('option');
+    opt.value=i; opt.textContent=name;
+    arpSel.appendChild(opt);
+  });
+  arpSel.value=t.arpMode||0;
+  // Include-rests checkbox (only meaningful for Converge/Diverge)
+  const arpRestsChk=document.createElement('input'); arpRestsChk.type='checkbox';
+  arpRestsChk.checked=!!t.arpIncludeRests;
+  arpRestsChk.title='Include rest steps as playback positions (Converge/Diverge only)';
+  arpRestsChk.style.marginLeft='4px';
+  const arpRestsLbl=mk('span','font-size:10px;color:var(--dim)','rests');
+  const updateArpRestsVisibility=()=>{
+    const v=parseInt(arpSel.value);
+    const active=(v===5||v===6);
+    arpRestsChk.style.opacity=active?'1':'0.35';
+    arpRestsLbl.style.opacity=active?'1':'0.35';
+  };
+  const sendArp=()=>sendSetArpMode(ti,parseInt(arpSel.value),arpRestsChk.checked);
+  arpSel.onchange=()=>{updateArpRestsVisibility();sendArp();};
+  arpRestsChk.onchange=sendArp;
+  updateArpRestsVisibility();
+  arpCtrl.append(arpLbl,arpSel,arpRestsChk,arpRestsLbl);
+
+  // Randomize style selector + vary-structure toggle
+  const randCtrl=document.createElement('div'); randCtrl.className='ctrl-small';
+  const randStyleLbl=document.createElement('label'); randStyleLbl.textContent='Rand style';
+  randStyleLbl.title='Markov pitch character used when the per-track Randomize button is clicked. Not used by Global Randomize (⚄ All Tracks), which has its own style selector in the toolbar.';
+  const randStyleSel=document.createElement('select'); randStyleSel.style.fontSize='11px';
+  [['Melodic','stepwise bias, moderate tonic gravity'],
+   ['Intervallic','3rd/4th/5th leaps, strong tonic pull'],
+   ['Floating','near-uniform motion, explores freely']].forEach(([name,tip],i)=>{
+    const opt=document.createElement('option'); opt.value=i; opt.textContent=name; opt.title=tip;
+    randStyleSel.appendChild(opt);
+  });
+  randStyleSel.value=randStylePref[ti]||0;
+  randStyleSel.onchange=()=>{randStylePref[ti]=parseInt(randStyleSel.value);};
+  const randVaryLenChk=document.createElement('input'); randVaryLenChk.type='checkbox';
+  randVaryLenChk.checked=!!(randStructurePref[ti]&1);
+  randVaryLenChk.title='Vary track length when randomizing';
+  randVaryLenChk.style.marginLeft='6px';
+  const randVaryLenLbl=mk('span','font-size:10px;color:var(--dim)','vary len');
+  const randVaryTimeSigChk=document.createElement('input'); randVaryTimeSigChk.type='checkbox';
+  randVaryTimeSigChk.checked=!!(randStructurePref[ti]&2);
+  randVaryTimeSigChk.title='Vary time signature when randomizing';
+  randVaryTimeSigChk.style.marginLeft='4px';
+  const randVaryTimeSigLbl=mk('span','font-size:10px;color:var(--dim)','vary meter');
+  const updateRandStructPref=()=>{
+    randStructurePref[ti]=(randVaryLenChk.checked?1:0)|(randVaryTimeSigChk.checked?2:0);
+  };
+  randVaryLenChk.onchange=updateRandStructPref;
+  randVaryTimeSigChk.onchange=updateRandStructPref;
+  randCtrl.append(randStyleLbl,randStyleSel,randVaryLenChk,randVaryLenLbl,randVaryTimeSigChk,randVaryTimeSigLbl);
+
+  // Mutation (Stockhausen continuous drift) controls
+  const mutCtrl=document.createElement('div'); mutCtrl.className='ctrl-small';
+  mutCtrl.style.borderTop='1px solid var(--border)'; mutCtrl.style.paddingTop='6px'; mutCtrl.style.marginTop='4px';
+
+  const mutEnableChk=document.createElement('input'); mutEnableChk.type='checkbox';
+  mutEnableChk.checked=t.mutEnabled||false;
+  mutEnableChk.style.margin='0 4px 0 0';
+  const mutEnableLbl=mk('label','font-weight:600','Mutation');
+  mutEnableLbl.style.cursor='pointer';
+  mutEnableLbl.title='Stockhausen-style continuous drift: note pitches gradually wander over time. Overlay mode — stored pattern is unchanged until you Latch.';
+  mutEnableLbl.prepend(mutEnableChk);
+
+  const mutRateLbl=mk('label','margin-left:10px;font-size:10px;color:var(--dim)','Rate');
+  const mutRateIn=document.createElement('input'); mutRateIn.type='range';
+  mutRateIn.min=0; mutRateIn.max=7; mutRateIn.step=1;
+  mutRateIn.value=t.mutRateIdx||3;
+  mutRateIn.style.cssText='width:72px;vertical-align:middle;margin:0 4px';
+  const kMutRateLabels=['4','8','16','32','64','128','256','512'];
+  const mutRateVal=mk('span','font-size:10px;color:var(--dim)',kMutRateLabels[t.mutRateIdx||3]+' steps');
+  mutRateIn.oninput=()=>{mutRateVal.textContent=kMutRateLabels[mutRateIn.value]+' steps';};
+
+  const mutDepthLbl=mk('label','margin-left:10px;font-size:10px;color:var(--dim)','Depth');
+  const mutDepthIn=document.createElement('input'); mutDepthIn.type='range';
+  mutDepthIn.min=0; mutDepthIn.max=7; mutDepthIn.step=1;
+  mutDepthIn.value=t.mutDepthIdx||2;
+  mutDepthIn.style.cssText='width:72px;vertical-align:middle;margin:0 4px';
+  const kMutDepthLabels=['subtle','subtle+','low','low+','med','med+','high','max'];
+  const mutDepthVal=mk('span','font-size:10px;color:var(--dim)',kMutDepthLabels[t.mutDepthIdx||2]);
+  mutDepthIn.oninput=()=>{mutDepthVal.textContent=kMutDepthLabels[mutDepthIn.value];};
+
+  const mutScaleChk=document.createElement('input'); mutScaleChk.type='checkbox';
+  mutScaleChk.checked=t.mutScaleConstrain||false;
+  mutScaleChk.style.margin='0 2px 0 10px';
+  mutScaleChk.title='Keep drifted notes in the track\'s current key and scale. In this mode the delta accumulates in semitones internally but output is snapped — notes only shift audibly when the delta crosses to the next scale degree.';
+  const mutScaleLbl=mk('span','font-size:10px;color:var(--dim)','in scale');
+
+  const sendMut=()=>sendSetMutation(ti,mutEnableChk.checked,parseInt(mutRateIn.value),parseInt(mutDepthIn.value),mutScaleChk.checked);
+  mutEnableChk.onchange=sendMut;
+  mutRateIn.onchange=sendMut;
+  mutDepthIn.onchange=sendMut;
+  mutScaleChk.onchange=sendMut;
+
+  const mutLatchBtn=document.createElement('button');
+  mutLatchBtn.className='gen-btn'+(latchedUnsaved.has(ti)?' latch-unsaved':'');
+  mutLatchBtn.style.marginLeft='10px';
+  mutLatchBtn.textContent='⤓ Latch';
+  mutLatchBtn.title='Write current mutated pitches permanently into the stored pattern, then clear deltas. Use before saving if you want to keep a happy accident.';
+  mutLatchBtn.onclick=()=>{
+    mutLatchBtn.classList.add('latch-unsaved'); // immediate feedback before RSP_STATE arrives
+    sendMutationLatch(ti);
+  };
+
+  mutCtrl.append(mutEnableLbl,mutRateLbl,mutRateIn,mutRateVal,mutDepthLbl,mutDepthIn,mutDepthVal,mutScaleChk,mutScaleLbl,mutLatchBtn);
+
+  // Accent CV output mode (CV tracks only) — audio L/R jack, AC-coupled transient shapes
+  const accentOutCtrl=document.createElement('div'); accentOutCtrl.className='ctrl-small';
+  const accentOutLbl=document.createElement('label'); accentOutLbl.textContent='Accent CV';
+  accentOutLbl.title='Sends a transient signal on the Audio L/R jack when an accented step fires. AC-coupled — use transient shapes (Spike or Hybrid) for most purposes.';
+  const accentOutSel=document.createElement('select'); accentOutSel.style.fontSize='11px';
+  ['Off','Spike (5ms)','Gate','Hybrid'].forEach((name,i)=>{
+    const opt=document.createElement('option'); opt.value=i; opt.textContent=name;
+    accentOutSel.appendChild(opt);
+  });
+  accentOutSel.value=t.accentOutMode||0;
+  accentOutSel.onchange=()=>sendSetAccentMode(ti,parseInt(accentOutSel.value));
+  const accentOutNote=mk('span','font-size:10px;color:var(--dim)','audio jack');
+  accentOutCtrl.append(accentOutLbl,accentOutSel,accentOutNote);
+
+  // Tabbed footer — Timing | Playback | Pitch | MIDI | Output
+  const outputNodes=[glideCtrl];
+  if(ti<2)outputNodes.push(accentOutCtrl); // accent CV only available on CV tracks
+  const TAB_GROUPS=[
+    {id:'timing',    label:'Timing',     nodes:[lenCtrl,barCtrl]},
+    {id:'playback',  label:'Playback',   nodes:[arpCtrl]},
+    {id:'generative',label:'Generative', nodes:[randCtrl,mutCtrl]},
+    {id:'pitch',     label:'Pitch',      nodes:[shiftCtrl,transpCtrl,scaleCtrl]},
+    {id:'midi',      label:'MIDI',       nodes:[chCtrl]},
+    {id:'output',    label:'Output',     nodes:outputNodes},
+  ];
+  if(!trackFooterTab[ti])trackFooterTab[ti]='timing';
+
+  const tabStrip=document.createElement('div'); tabStrip.className='footer-tabs';
+  const tabPanels=document.createElement('div'); tabPanels.className='footer-tab-panels';
+
+  TAB_GROUPS.forEach(group=>{
+    // Tab button
+    const btn=document.createElement('button'); btn.className='footer-tab-btn';
+    btn.textContent=group.label;
+    if(trackFooterTab[ti]===group.id)btn.classList.add('active');
+    btn.onclick=()=>{
+      trackFooterTab[ti]=group.id;
+      tabStrip.querySelectorAll('.footer-tab-btn').forEach(b=>b.classList.remove('active'));
+      tabPanels.querySelectorAll('.footer-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      panel.classList.add('active');
+    };
+    tabStrip.appendChild(btn);
+
+    // Tab panel
+    const panel=document.createElement('div'); panel.className='footer-panel';
+    if(trackFooterTab[ti]===group.id)panel.classList.add('active');
+    group.nodes.forEach(n=>panel.appendChild(n));
+    tabPanels.appendChild(panel);
+  });
+
+  footer.append(tabStrip,tabPanels);
+  block.appendChild(footer);
+
+  return block;
+}
+
+function mk(tag,style,text){
+  const el=document.createElement(tag);
+  if(style)el.style.cssText=style;
+  if(text)el.textContent=text;
+  return el;
+}
+
+function rebuildRibbons(ti){
+  invalidateBarStarts(ti);
+  const newCols=`repeat(${pattern.tracks[ti].length},1fr)`;
+  const r=document.getElementById('ribbon-'+ti);
+  const g=document.getElementById('gate-strip-'+ti);
+  const p=document.getElementById('prob-strip-'+ti);
+  if(r){r.innerHTML='';r.style.gridTemplateColumns=newCols;
+    for(let si=0;si<pattern.tracks[ti].length;si++)r.appendChild(buildStepCell(ti,si));
+    addRibbonPointerHandlers(r,ti);}
+  if(g){g.innerHTML='';g.style.gridTemplateColumns=newCols;
+    for(let si=0;si<pattern.tracks[ti].length;si++)g.appendChild(buildGateSeg(ti,si));}
+  if(p){p.innerHTML='';p.style.gridTemplateColumns=newCols;
+    for(let si=0;si<pattern.tracks[ti].length;si++)p.appendChild(buildProbSeg(ti,si));}
+}
+
+function pitchBarHeight(note){
+  if(note===-1)return'3px';
+  return Math.max(8,Math.round(note/126*100))+'%';
+}
+
+function cellClasses(s,isBarStart,isPartialBar){
+  let c='step-cell';
+  if(s.note===-1)c+=' rest';
+  if(isBarStart)c+=' bar-start';
+  if(s.tied&&s.note!==-1)c+=' tied';
+  if(s.accent&&s.note!==-1)c+=' accented';
+  if(isPartialBar)c+=' partial-bar';
+  return c;
+}
+function isInPartialBar(ti,si){
+  const len=pattern.tracks[ti].length;
+  if((barMode[ti]||'regular')==='irregular'){
+    const groups=barGroups[ti]||[];
+    const groupSum=groups.reduce((a,b)=>a+b,0);
+    return groupSum<len&&si>=groupSum;
+  }
+  const sig=barSizes[ti]||4;
+  return (len%sig!==0)&&(si>=Math.floor(len/sig)*sig);
+}
+
+function buildStepCell(ti,si){
+  const s=pattern.tracks[ti].steps[si];
+  const isRest=s.note===-1;
+  const isBarStart=getBarStarts(ti).has(si);
+
+  const cell=document.createElement('div');
+  cell.className=cellClasses(s,isBarStart,isInPartialBar(ti,si));
+  cell.id='cell-'+ti+'-'+si;
+
+  const pitchBar=document.createElement('div');
+  pitchBar.className='pitch-bar';
+  pitchBar.style.height=pitchBarHeight(s.note);
+  cell.appendChild(pitchBar);
+
+  const noteEl=document.createElement('div');
+  noteEl.className='step-note';
+  noteEl.textContent=isRest?'·':noteName(s.note);
+  cell.appendChild(noteEl);
+
+  const accentDot=document.createElement('div');
+  accentDot.className='step-accent-dot';
+  cell.appendChild(accentDot);
+
+  const indRow=document.createElement('div');
+  indRow.className='step-indicator-row';
+  const tieEl=document.createElement('span');
+  tieEl.className='step-tie';
+  tieEl.textContent=s.tied&&!isRest?'~':'';
+  const ratchetEl=document.createElement('span');
+  ratchetEl.className='step-ratchet';
+  ratchetEl.textContent=(!isRest&&s.ratchetCount>1)?('×'+s.ratchetCount):'';
+  indRow.append(tieEl,ratchetEl);
+  cell.appendChild(indRow);
+
+  // Wheel stays per-cell (no conflict with ribbon pointer capture)
+  cell.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    const s=pattern.tracks[ti].steps[si];
+    if(s.note===-1)return;
+    if(e.shiftKey){
+      const delta=e.deltaY>0?-1:1;
+      s.ratchetCount=Math.max(1,Math.min(8,(s.ratchetCount||1)+delta));
+      if(s.ratchetCount>1)s.tied=false;
+    }else{
+      const delta=e.deltaY>0?-1:1;
+      s.note=nudgeNote(ti,s.note,delta);
+    }
+    sendSetStep(ti,si,s.note,s.gateLenPct,stepsFlags(s));
+    refreshCell(ti,si);
+  },{passive:false});
+
+  return cell;
+}
+
+// ── Ribbon pointer state machine ──────────────────────────────────────────────
+// Three gestures: idle → click | pitch-drag | draw
+//
+// Cell lookup uses X-coordinate math rather than elementFromPoint so that the
+// 2px grid gaps (which return the ribbon element, not a cell) don't interrupt
+// sweeps. Intermediate cells skipped by fast movement are filled by paintRange.
+function addRibbonPointerHandlers(ribbon,ti){
+  let ptId=-1, state='idle';
+  let si0=-1, x0=0, y0=0, note0=0, mods={};
+  let lastPainted=-1;
+
+  // Cell index from X: divides ribbon width into equal slots — no gap dead zones.
+  function siFromX(x){
+    const len=pattern.tracks[ti].length;
+    const rect=ribbon.getBoundingClientRect();
+    const rel=x-rect.left;
+    if(rel<0||rel>rect.width)return -1;
+    return Math.max(0,Math.min(len-1,Math.floor((rel/rect.width)*len)));
+  }
+  // Note from ribbon Y: uniform scale across the full ribbon height.
+  function noteFromY(y){
+    const rect=ribbon.getBoundingClientRect();
+    const frac=Math.max(0,Math.min(1,1-(y-rect.top)/rect.height));
+    return snapNote(ti,Math.round(frac*126));
+  }
+  function paintAt(si,note){
+    if(si<0||si>=pattern.tracks[ti].length)return;
+    const s=pattern.tracks[ti].steps[si];
+    savedNote[ti+'-'+si]=note;
+    if(s.note===note&&s.note!==-1)return;
+    s.note=note;
+    sendSetStep(ti,si,note,s.gateLenPct,stepsFlags(s));
+    refreshCell(ti,si);
+  }
+  // Paint every cell from `from` to `to` inclusive (handles skipped cells).
+  function paintRange(from,to,note){
+    const step=from<=to?1:-1;
+    for(let s=from;s!==to+step;s+=step)paintAt(s,note);
+  }
+  function commitClick(si,mods){
+    const s=pattern.tracks[ti].steps[si];
+    if(mods.ctrl){
+      if(s.note===-1)return;
+      s.tied=!s.tied; if(s.tied)s.ratchetCount=1;
+    }else if(mods.alt){
+      if(s.note===-1)return;
+      s.accent=!s.accent;
+    }else{
+      const key=ti+'-'+si;
+      if(s.note===-1){s.note=savedNote[key]??60;}
+      else{savedNote[key]=s.note;s.note=-1;s.tied=false;s.accent=false;}
+    }
+    sendSetStep(ti,si,s.note===-1?WIRE_REST:s.note,s.gateLenPct,stepsFlags(s));
+    refreshCell(ti,si);
+  }
+
+  ribbon.addEventListener('pointerdown',(e)=>{
+    if(e.button!==0)return;
+    const si=siFromX(e.clientX);
+    if(si<0)return;
+    ptId=e.pointerId; state='idle';
+    si0=si; x0=e.clientX; y0=e.clientY; lastPainted=-1;
+    note0=pattern.tracks[ti].steps[si].note===-1?60:pattern.tracks[ti].steps[si].note;
+    mods={ctrl:e.ctrlKey||e.metaKey,alt:e.altKey};
+    ribbon.setPointerCapture(e.pointerId);
+    ribbonDragging=true;
+    e.preventDefault();
+  });
+
+  ribbon.addEventListener('pointermove',(e)=>{
+    if(e.pointerId!==ptId)return;
+    const si=siFromX(e.clientX);
+
+    if(state==='idle'){
+      if(si>=0&&si!==si0){
+        state='draw'; lastPainted=si0;
+        paintAt(si0,noteFromY(e.clientY)); // paint starting cell on first move
+      }else{
+        // Enter pitch-drag only when movement is clearly vertical (|dy| > |dx|*2).
+        // Without this check, a slow horizontal sweep accumulates enough vertical
+        // wobble to trigger pitch mode before reaching the next cell.
+        const dx=Math.abs(e.clientX-x0), dy=Math.abs(e.clientY-y0);
+        if(!mods.ctrl&&!mods.alt&&dy>8&&dy>dx*2&&
+           pattern.tracks[ti].steps[si0].note!==-1){
+          state='pitch';
+        }
+      }
+    }
+
+    if(state==='pitch'){
+      const raw=Math.max(0,Math.min(126,note0+Math.round((y0-e.clientY)/4)));
+      const note=snapNote(ti,raw);
+      const s=pattern.tracks[ti].steps[si0];
+      if(note!==s.note){s.note=note;refreshCell(ti,si0);}
+    }else if(state==='draw'&&si>=0&&si!==lastPainted){
+      const note=noteFromY(e.clientY);
+      // Fill cells skipped between events (fast sweeps)
+      paintRange(lastPainted<si?lastPainted+1:lastPainted-1,si,note);
+      lastPainted=si;
+    }
+  });
+
+  ribbon.addEventListener('pointerup',(e)=>{
+    if(e.pointerId!==ptId)return;
+    if(state==='pitch'){
+      const s=pattern.tracks[ti].steps[si0];
+      if(s.note!==-1)sendSetStep(ti,si0,s.note,s.gateLenPct,stepsFlags(s));
+    }else if(state==='idle'){
+      commitClick(si0,mods);
+    }
+    ribbonDragging=false; ptId=-1; state='idle';
+  });
+
+  ribbon.addEventListener('pointercancel',()=>{ribbonDragging=false;ptId=-1;state='idle';});
+}
+
+function buildGateSeg(ti,si){
+  const s=pattern.tracks[ti].steps[si];
+  const isBarStart=getBarStarts(ti).has(si);
+
+  const seg=document.createElement('div');
+  seg.className='gate-seg'+(isBarStart?' bar-start':'');
+  seg.id='gate-'+ti+'-'+si;
+
+  const fill=document.createElement('div');
+  fill.className='gate-seg-fill';
+  fill.style.height=s.note===-1?'0%':s.gateLenPct+'%';
+  seg.appendChild(fill);
+
+  const lbl=document.createElement('div');
+  lbl.className='gate-seg-label';
+  lbl.textContent=s.note===-1?'':s.gateLenPct+'%';
+  seg.appendChild(lbl);
+
+  let startY=0,startGate=0,active=false;
+  seg.addEventListener('pointerdown',(e)=>{
+    startY=e.clientY; startGate=pattern.tracks[ti].steps[si].gateLenPct;
+    active=true; seg.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  seg.addEventListener('pointermove',(e)=>{
+    if(!active||!seg.hasPointerCapture(e.pointerId))return;
+    const newGate=Math.max(1,Math.min(100,startGate+Math.round(startY-e.clientY)));
+    if(newGate!==pattern.tracks[ti].steps[si].gateLenPct){
+      pattern.tracks[ti].steps[si].gateLenPct=newGate; refreshGateSeg(ti,si);
+    }
+  });
+  seg.addEventListener('pointerup',(e)=>{
+    if(!active)return; active=false;
+    const s=pattern.tracks[ti].steps[si];
+    if(s.note!==-1)sendSetStep(ti,si,s.note,s.gateLenPct,stepsFlags(s));
+  });
+
+  seg.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    const s=pattern.tracks[ti].steps[si];
+    if(s.note===-1)return;
+    s.gateLenPct=Math.max(1,Math.min(100,s.gateLenPct+(e.deltaY<0?5:-5)));
+    refreshGateSeg(ti,si);
+    sendSetStep(ti,si,s.note,s.gateLenPct,stepsFlags(s));
+  },{passive:false});
+
+  return seg;
+}
+
+function stepsFlags(s){
+  let f=0;
+  if(s.tied)f|=STEP_FLAG_TIED;
+  if(s.accent)f|=STEP_FLAG_ACCENT;
+  f|=(((s.ratchetCount-1)&7)<<2);
+  f|=(((s.probability??7)&7)<<5);
+  return f;
+}
+function probLabel(level){
+  if(level>=7)return '';
+  return [0,14,29,43,57,71,86][level]+'%';
+}
+
+function refreshCell(ti,si){
+  const cell=document.getElementById('cell-'+ti+'-'+si); if(!cell)return;
+  const s=pattern.tracks[ti].steps[si];
+  const isRest=s.note===-1;
+  const isBarStart=getBarStarts(ti).has(si);
+  cell.className=cellClasses(s,isBarStart,isInPartialBar(ti,si))+(cell.classList.contains('playing')?' playing':'');
+  const pb=cell.querySelector('.pitch-bar');
+  if(pb)pb.style.height=pitchBarHeight(s.note);
+  const nl=cell.querySelector('.step-note');
+  if(nl)nl.textContent=isRest?'·':noteName(s.note);
+  const tie=cell.querySelector('.step-tie');
+  if(tie)tie.textContent=s.tied&&!isRest?'~':'';
+  const ratchet=cell.querySelector('.step-ratchet');
+  if(ratchet)ratchet.textContent=(!isRest&&s.ratchetCount>1)?('×'+s.ratchetCount):'';
+  refreshGateSeg(ti,si);
+  refreshProbSeg(ti,si);
+}
+
+function refreshGateSeg(ti,si){
+  const seg=document.getElementById('gate-'+ti+'-'+si); if(!seg)return;
+  const s=pattern.tracks[ti].steps[si];
+  const isRest=s.note===-1;
+  const fill=seg.querySelector('.gate-seg-fill');
+  if(fill)fill.style.height=isRest?'0%':s.gateLenPct+'%';
+  const lbl=seg.querySelector('.gate-seg-label');
+  if(lbl)lbl.textContent=isRest?'':s.gateLenPct+'%';
+}
+
+function buildProbSeg(ti,si){
+  const s=pattern.tracks[ti].steps[si];
+  const isRest=s.note===-1;
+  const isBarStart=getBarStarts(ti).has(si);
+
+  const seg=document.createElement('div');
+  seg.className='prob-seg'+(isBarStart?' bar-start':'');
+  seg.id='prob-'+ti+'-'+si;
+
+  const fill=document.createElement('div');
+  fill.className='prob-seg-fill';
+  const prob=s.probability??7;
+  fill.style.height=isRest?'0%':(prob/7*100)+'%';
+  seg.appendChild(fill);
+
+  const lbl=document.createElement('div');
+  lbl.className='prob-seg-label';
+  lbl.textContent=isRest?'':probLabel(prob);
+  seg.appendChild(lbl);
+
+  let startY=0,startLevel=0,active=false;
+  seg.addEventListener('pointerdown',(e)=>{
+    startY=e.clientY; startLevel=pattern.tracks[ti].steps[si].probability??7;
+    active=true; seg.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  seg.addEventListener('pointermove',(e)=>{
+    if(!active||!seg.hasPointerCapture(e.pointerId))return;
+    const newLevel=Math.max(0,Math.min(7,Math.round(startLevel+(startY-e.clientY)/4)));
+    if(newLevel!==(pattern.tracks[ti].steps[si].probability??7)){
+      pattern.tracks[ti].steps[si].probability=newLevel; refreshProbSeg(ti,si);
+    }
+  });
+  seg.addEventListener('pointerup',(e)=>{
+    if(!active)return; active=false;
+    const s=pattern.tracks[ti].steps[si];
+    sendSetStep(ti,si,s.note===undefined?WIRE_REST:s.note,s.gateLenPct,stepsFlags(s));
+  });
+  seg.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    const s=pattern.tracks[ti].steps[si];
+    if(s.note===-1)return;
+    s.probability=Math.max(0,Math.min(7,(s.probability??7)+(e.deltaY<0?1:-1)));
+    refreshProbSeg(ti,si);
+    sendSetStep(ti,si,s.note,s.gateLenPct,stepsFlags(s));
+  },{passive:false});
+
+  return seg;
+}
+
+function refreshProbSeg(ti,si){
+  const seg=document.getElementById('prob-'+ti+'-'+si); if(!seg)return;
+  const s=pattern.tracks[ti].steps[si];
+  const isRest=s.note===-1;
+  const prob=s.probability??7;
+  const fill=seg.querySelector('.prob-seg-fill');
+  if(fill)fill.style.height=isRest?'0%':(prob/7*100)+'%';
+  const lbl=seg.querySelector('.prob-seg-label');
+  if(lbl)lbl.textContent=isRest?'':probLabel(prob);
+}
+
+// ── Playhead ──────────────────────────────────────────────────────────────────
+let lastPlayheads=[];
+function updatePlayheads(payload){
+  if(!pattern)return;
+  lastPlayheads.forEach((si,ti)=>{
+    const c=document.getElementById('cell-'+ti+'-'+si);
+    if(c){c.classList.remove('playing');c.classList.remove('flash-accent');}
+  });
+  lastPlayheads=[];
+  for(let ti=0;ti<payload.length&&ti<pattern.numTracks;ti++){
+    const si=payload[ti]; lastPlayheads[ti]=si;
+    const c=document.getElementById('cell-'+ti+'-'+si); if(!c)continue;
+    c.classList.add('playing');
+    const s=pattern.tracks[ti].steps[si];
+    if(s&&s.accent&&s.note!==-1){
+      c.classList.remove('flash-accent');
+      void c.offsetWidth; // force reflow to restart animation
+      c.classList.add('flash-accent');
+    }
+  }
+}
+
+// ── Length change ─────────────────────────────────────────────────────────────
+function changeLength(ti,delta,absolute){
+  if(!pattern)return;
+  const t=pattern.tracks[ti];
+  const newLen=absolute!==undefined
+    ?Math.max(1,Math.min(64,absolute))
+    :Math.max(1,Math.min(64,t.length+delta));
+  if(newLen===t.length)return;
+  sendSetLength(ti,newLen);
+  setTimeout(sendGetState,100);
+}
+
+// ── Diagnostics ───────────────────────────────────────────────────────────────
+let diagPrev=null,diagPending=false,diagAutoPoll=false,diagTimer=null,syncTimer=null;
+function parseDiag(text){
+  const re=/(\w+)=(-?\d+)/g,obj={}; let m;
+  while((m=re.exec(text))!==null)obj[m[1]]=parseInt(m[2]);
+  return 'proc' in obj?obj:null;
+}
+function setAi(id,state,sym){const el=document.getElementById(id);el.className='ai ai-'+state;el.textContent=sym;}
+function applyDiag(d){
+  if(!d)return;
+  const fmt=n=>n.toLocaleString();
+  document.getElementById('dv-proc').textContent=fmt(d.proc);
+  document.getElementById('dv-steps').textContent=fmt(d.steps);
+  document.getElementById('dv-drop').textContent=fmt(d.drop);
+  document.getElementById('dv-on0').textContent=fmt(d.on0);
+  document.getElementById('dv-off0').textContent=fmt(d.off0);
+  document.getElementById('dv-on1').textContent=fmt(d.on1);
+  document.getElementById('dv-off1').textContent=fmt(d.off1);
+  document.getElementById('dv-midi').textContent=d.midi;
+  if('mute' in d)document.getElementById('dv-mute').textContent='0b'+d.mute.toString(2).padStart(4,'0')+' ('+d.mute+')';
+  if('ch0' in d)document.getElementById('dv-ch0').textContent=d.ch0;
+  if('ch1' in d)document.getElementById('dv-ch1').textContent=d.ch1;
+  if('n0' in d)document.getElementById('dv-n0').textContent=d.n0===-1?'—':d.n0+' ('+noteName(d.n0)+')';
+  if('n1' in d)document.getElementById('dv-n1').textContent=d.n1===-1?'—':d.n1+' ('+noteName(d.n1)+')';
+  document.getElementById('t-drop').className='tile'+(d.drop===0?' t-ok':' t-err');
+  document.getElementById('t-midi').className='tile'+(d.midi===1?' t-ok':' t-warn');
+  const t0d=d.on0-d.off0,t1d=d.on1-d.off1;
+  document.getElementById('ds-t0').textContent=t0d>0?'gate open ('+t0d+')':t0d===0&&d.on0>0?'balanced':d.on0===0?'no notes yet':'⚠ off>on';
+  document.getElementById('ds-t1').textContent=t1d>0?'gate open ('+t1d+')':t1d===0&&d.on1>0?'balanced':d.on1===0?'no notes yet':'⚠ off>on';
+  document.getElementById('t-on0').className='tile'+(d.off0>d.on0?' t-err':t0d>0?' t-warn':d.on0>0?' t-ok':'');
+  document.getElementById('t-on1').className='tile'+(d.off1>d.on1?' t-err':t1d>0?' t-warn':d.on1>0?' t-ok':'');
+  if(diagPrev){
+    const pOk=d.proc>diagPrev.proc;
+    setAi('ai-run',pOk?'ok':'err',pOk?'✓':'✗');
+    document.getElementById('ad-run').textContent=pOk?'+'+fmt(d.proc-diagPrev.proc):'unchanged!';
+    const sOk=d.steps>diagPrev.steps;
+    setAi('ai-steps',sOk?'ok':'warn',sOk?'✓':'~');
+    document.getElementById('ad-steps').textContent=sOk?'+'+(d.steps-diagPrev.steps):'no advance';
+  }
+  setAi('ai-drop',d.drop===0?'ok':'err',d.drop===0?'✓':'✗');
+  setAi('ai-t0',d.off0<=d.on0?'ok':'err',d.off0<=d.on0?'✓':'✗');
+  document.getElementById('ad-t0').textContent=t0d>0?'gate open: '+t0d:'';
+  setAi('ai-t1',d.off1<=d.on1?'ok':'err',d.off1<=d.on1?'✓':'✗');
+  setAi('ai-midi2',d.midi===1?'ok':'warn',d.midi===1?'✓':'~');
+  diagPrev=d;
+  document.getElementById('pollTs').textContent='last polled '+new Date().toLocaleTimeString();
+}
+function pollDiag(){if(!port)return;diagPending=true;sendText('diag?\n');}
+function toggleAutoPoll(){
+  diagAutoPoll=!diagAutoPoll;
+  document.getElementById('btnDiagAuto').textContent='Auto-poll: '+(diagAutoPoll?'on (2s)':'off');
+  if(diagAutoPoll)scheduleAutoPoll();else{clearTimeout(diagTimer);diagTimer=null;}
+}
+function scheduleAutoPoll(){if(!diagAutoPoll)return;pollDiag();diagTimer=setTimeout(scheduleAutoPoll,2000);}
+
+// ── WebMIDI ───────────────────────────────────────────────────────────────────
+async function detectMIDI(){
+  const status=document.getElementById('midiStatus'),list=document.getElementById('midiList');
+  if(!('requestMIDIAccess' in navigator)){status.textContent='WebMIDI not available';status.className='status err';return;}
+  try{
+    const midi=await navigator.requestMIDIAccess();
+    const ports=[];
+    midi.inputs.forEach(p=>ports.push({dir:'IN',name:p.name,mfr:p.manufacturer}));
+    midi.outputs.forEach(p=>ports.push({dir:'OUT',name:p.name,mfr:p.manufacturer}));
+    if(!ports.length){status.textContent='no MIDI ports';status.className='status dim';list.textContent='No MIDI devices found.';return;}
+    const hasSB=ports.some(p=>p.name&&p.name.toLowerCase().includes('stepbridge'));
+    status.textContent=ports.length+' port'+(ports.length>1?'s':'')+' found';
+    status.className=hasSB?'status ok':'status dim';
+    if(hasSB)setCheck('chk-midi','ok');
+    list.innerHTML=ports.map(p=>{
+      const f=hasSB&&p.name&&p.name.toLowerCase().includes('stepbridge');
+      return`<div class="midi-entry${f?' found':''}">`+
+        (f?'<span class="midi-badge">'+p.dir+'</span>':'<span style="color:var(--dim)">'+p.dir+'</span>')+
+        ` ${p.name||'(unnamed)'}${p.mfr?` <span style="color:var(--dim)">[${p.mfr}]</span>`:''}</div>`;
+    }).join('');
+  }catch(e){status.textContent='MIDI access denied: '+e.message;status.className='status err';}
+}
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+(function(){
+  const stored=localStorage.getItem('sbTheme');
+  if(stored)document.documentElement.setAttribute('data-theme',stored);
+})();
+function cycleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme');
+  const next=(cur==='light')?'dark':'light';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('sbTheme',next);
+  document.getElementById('btnTheme').textContent=next==='light'?'🌙':'☀';
+}
+(function(){
+  const t=document.documentElement.getAttribute('data-theme');
+  const btn=document.getElementById('btnTheme');
+  if(btn)btn.textContent=t==='light'?'🌙':'☀';
+})();
+
+// ── Page init ────────────────────────────────────────────────────────────────
+document.getElementById('ver-webui-str').textContent=WEB_UI_VERSION;
+// Attempt auto-connect to any previously-granted port (works silently on reload).
+// On first visit or after permissions are reset, user clicks Connect manually.
+tryAutoConnect();
+
+// ── Scroll-to-adjust all number inputs ───────────────────────────────────────
+document.addEventListener('wheel',(e)=>{
+  if(e.target.tagName!=='INPUT'||(e.target.type!=='number'&&e.target.type!=='range'))return;
+  e.preventDefault();
+  const inp=e.target;
+  const step=parseFloat(inp.step)||1;
+  const min=inp.min!==''?parseFloat(inp.min):-Infinity;
+  const max=inp.max!==''?parseFloat(inp.max):Infinity;
+  const val=Math.min(max,Math.max(min,(parseFloat(inp.value)||0)+(e.deltaY<0?step:-step)));
+  inp.value=val;
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  inp.dispatchEvent(new Event('change',{bubbles:true}));
+},{passive:false});
+</script>
 </body>
 </html>

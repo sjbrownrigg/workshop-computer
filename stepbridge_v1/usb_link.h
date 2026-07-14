@@ -66,6 +66,12 @@ public:
 		// erase/program), so it needs no RequestPause - that's only
 		// required around the write side (see MSG_SAVE_SLOT/MSG_LOAD_SLOT).
 		flashStore_.Load();
+		// Restore device-wide settings (CV routing, calibration, tempo,
+		// clock source) to pattern_ so the user doesn't have to re-route
+		// and recalibrate after every reflash. Runs before core1 launches,
+		// so there is no cross-core race here (no volatile writes in flight
+		// yet). No RequestPause needed - Load() just did a XIP read.
+		flashStore_.RestoreDeviceSettings(pattern_);
 	}
 
 	// Blocking. Call directly from main() on core0 - there is nothing else
@@ -149,6 +155,7 @@ public:
 			SendTrackStepsIfChanged();
 			SendTempoIfChanged();
 			CheckPreviewNoteOff();
+			SendKnobReadingsIfStreaming();
 		}
 	}
 
@@ -306,7 +313,7 @@ private:
 		}
 		case MSG_ADD_TRACK:
 		{
-			if (pattern_.numTracks >= MAX_TRACKS) { Nack(command, NACK_BAD_VALUE); break; }
+			if (pattern_.numTracks >= MAX_PLAYABLE_TRACKS) { Nack(command, NACK_BAD_VALUE); break; }
 			const uint8_t index = pattern_.numTracks;
 			Track &track = pattern_.tracks[index];
 			track = Track{}; // fresh defaults - struct member initializers (sequencer.h)
@@ -366,6 +373,9 @@ private:
 			pattern_.cvTrackRoute = data[0];
 			pattern_.cvStepRoute  = data[1];
 			SendCVRoutingState();
+			RequestAudioPause();
+			flashStore_.SaveDeviceSettings(pattern_);
+			ReleaseAudioPause();
 			break;
 		}
 		case MSG_SET_CV_ROUTING_CAL:
@@ -379,11 +389,34 @@ private:
 			if (data[0] == 0) { pattern_.cvTrackCalMin = calMin; pattern_.cvTrackCalMax = calMax; }
 			else              { pattern_.cvStepCalMin  = calMin; pattern_.cvStepCalMax  = calMax; }
 			SendCVRoutingState();
+			RequestAudioPause();
+			flashStore_.SaveDeviceSettings(pattern_);
+			ReleaseAudioPause();
 			break;
 		}
 		case MSG_REQUEST_CV_ROUTING:
 		{
 			SendCVRoutingState();
+			break;
+		}
+		case MSG_REQUEST_CV_READING:
+		{
+			SendCVReading();
+			break;
+		}
+		case MSG_SET_PANEL_FREEZE:
+		{
+			if (size < 1 || data[0] > 1) { Nack(command, NACK_BAD_VALUE); break; }
+			pattern_.panelFrozen = (data[0] != 0);
+			Ack(command);
+			break;
+		}
+		case MSG_SET_KNOB_STREAM:
+		{
+			if (size < 1 || data[0] > 1) { Nack(command, NACK_BAD_VALUE); break; }
+			knobStreamEnabled_ = (data[0] != 0);
+			knobStreamLastSendMs_ = 0; // force immediate first send
+			Ack(command);
 			break;
 		}
 
@@ -830,6 +863,21 @@ private:
 		SendSysEx(MSG_GLOBAL_MUTE, vals, 1);
 	}
 
+	// Snapshot of the raw (unfiltered) CvToKnob values for both CV channels,
+	// sent in response to MSG_REQUEST_CV_READING. Used by the Web UI calibration
+	// flow: the user sets their CV to a known voltage, requests a reading, then
+	// uses the returned value as a calMin or calMax endpoint.
+	void SendCVReading()
+	{
+		const int32_t cv0 = pattern_.rawCvKnob[0];
+		const int32_t cv1 = pattern_.rawCvKnob[1];
+		uint8_t vals[4] = {
+			(uint8_t)(cv0 & 0x7F), (uint8_t)((cv0 >> 7) & 0x7F),
+			(uint8_t)(cv1 & 0x7F), (uint8_t)((cv1 >> 7) & 0x7F),
+		};
+		SendSysEx(MSG_CV_READING, vals, 4);
+	}
+
 	// CV routing state: route bytes + calibration endpoints (each 0-4095, split
 	// into 7-bit lo/hi pairs to stay within SysEx data-byte range).
 	void SendCVRoutingState()
@@ -882,6 +930,45 @@ private:
 		lastSentPanelScrub_ = scrubStep;
 		uint8_t vals[3] = {page, selectedTrack, scrubStep};
 		SendSysEx(MSG_PANEL_STATE, vals, 3);
+	}
+
+	void SendKnobReadingsIfStreaming()
+	{
+		if (!knobStreamEnabled_) return;
+		if (!tud_midi_mounted()) return;
+		uint32_t now = to_ms_since_boot(get_absolute_time());
+		if (now - knobStreamLastSendMs_ < 100) return; // ~10Hz
+		knobStreamLastSendMs_ = now;
+		// 8 values × 2 bytes (7-bit lo/hi): rawY, filtY, rawX, filtX, rawCV0, filtCV0, rawCV1, filtCV1
+		const int32_t vals[8] = {
+			pattern_.diagRawY,       pattern_.diagFilteredY,
+			pattern_.diagRawX,       pattern_.diagFilteredX,
+			pattern_.rawCvKnob[0],   pattern_.diagFilteredCV[0],
+			pattern_.rawCvKnob[1],   pattern_.diagFilteredCV[1],
+		};
+		uint8_t frame[4 + 16 + 1]; // SysEx header(4) + payload(16) + F7(1)
+		frame[0] = 0xF0;
+		frame[1] = MIDI_MANUFACTURER_ID;
+		frame[2] = DEVICE_ID;
+		frame[3] = MSG_KNOB_READINGS;
+		for (int i = 0; i < 8; i++)
+		{
+			const int32_t v = vals[i] < 0 ? 0 : vals[i] > 4095 ? 4095 : vals[i];
+			frame[4 + i * 2]     = (uint8_t)(v & 0x7F);
+			frame[4 + i * 2 + 1] = (uint8_t)((v >> 7) & 0x7F);
+		}
+		frame[sizeof(frame) - 1] = 0xF7;
+		// Intentionally non-blocking: one write attempt only, no retry loop.
+		// Diagnostic streaming is low-priority; dropping a frame is acceptable.
+		// If we can't write the whole frame atomically, send a rescue F7 to
+		// keep the receiver's SysEx parser in a known (closed) state — never
+		// leave it with an unclosed frame that corrupts every subsequent message.
+		uint32_t written = tud_midi_stream_write(0, frame, sizeof(frame));
+		if (written < sizeof(frame))
+		{
+			uint8_t f7 = 0xF7;
+			tud_midi_stream_write(0, &f7, 1);
+		}
 	}
 
 	// ===================================================================
@@ -1130,6 +1217,9 @@ private:
 	uint8_t lastSentPanelPage_ = 0xFF; // forces an initial send
 	uint8_t lastSentPanelTrack_ = 0xFF;
 	uint8_t lastSentPanelScrub_ = 0xFF;
+
+	bool knobStreamEnabled_ = false;
+	uint32_t knobStreamLastSendMs_ = 0;
 
 	// Per-track snapshot of the last-broadcast MSG_TRACK_STEPS frame, for
 	// SendTrackStepsIfChanged's diff. lastTrackStepsLen_ defaults to 0,

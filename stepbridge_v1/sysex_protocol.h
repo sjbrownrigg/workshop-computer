@@ -53,6 +53,13 @@ constexpr uint8_t MSG_SLOT_BITMAP = 0x04;       // bitmapLow7(slots 0-6), bitmap
                                                  // MSG_REQUEST_SLOT_BITMAP. Bitmap split across two bytes because
                                                  // NUM_SAVE_SLOTS=8 needs bit 7, which would make a single-byte
                                                  // bitmap illegal SysEx data (every byte must be 0-127).
+constexpr uint8_t MSG_KNOB_READINGS = 0x11;     // Firmware→Host: rawY[2×7bit], filtY[2×7bit], rawX[2×7bit],
+                                                 // filtX[2×7bit], rawCV0[2×7bit], filtCV0[2×7bit],
+                                                 // rawCV1[2×7bit], filtCV1[2×7bit] — sent at ~10Hz when
+                                                 // streaming is enabled (MSG_SET_KNOB_STREAM). All values are
+                                                 // raw ADC units (0-4095 = CvToKnob scale or KnobVal scale)
+                                                 // BEFORE calibration so the user can observe the true
+                                                 // hardware signal independently of how it maps to tracks/steps.
 constexpr uint8_t MSG_DIAG_EVENT_BATCH = 0x10;  // count, more(0/1), then count*(type, seq[5x7bit], ts32[5x7bit],
                                                  // arg0, arg1) - response to MSG_REQUEST_DIAG_EVENTS. seq/
                                                  // timestampMs are uint32_t, split into 5 7-bit-safe bytes each
@@ -140,7 +147,24 @@ constexpr uint8_t MSG_CV_ROUTING_STATE = 0x0E;    // Firmware→Host: cvTrackRou
                                                    // trackCalMin[2×7bit], trackCalMax[2×7bit],
                                                    // stepCalMin[2×7bit], stepCalMax[2×7bit] -
                                                    // sent on change and in response to MSG_REQUEST_CV_ROUTING
+constexpr uint8_t MSG_CV_READING = 0x0F;           // Firmware→Host: cvKnob0[2×7bit], cvKnob1[2×7bit] —
+                                                   // raw (unfiltered) CvToKnob(CVIn(n)) snapshot for both
+                                                   // channels, sent only in response to MSG_REQUEST_CV_READING
+                                                   // (never pushed spontaneously). Used by the Web UI's
+                                                   // two-point calibration flow to capture the actual ADC
+                                                   // value at a user-set voltage position.
 constexpr uint8_t MSG_REQUEST_CV_ROUTING = 0x5B;  // (none) - re-syncs CV routing state on reconnect
+constexpr uint8_t MSG_REQUEST_CV_READING = 0x5C;  // (none) - read current CvToKnob(CVIn(n)) for both
+                                                   // channels; reply is MSG_CV_READING. Caller should set
+                                                   // their CV source to the target voltage before sending.
+constexpr uint8_t MSG_SET_PANEL_FREEZE = 0x5D;    // frozen(0/1) — when 1, hardware knob/CV inputs are still
+                                                   // read and streamed but don't change pattern state: no track/
+                                                   // step/length/pitch changes from physical controls. Lets the
+                                                   // web UI be tested in isolation. Acked with MSG_ACK.
+constexpr uint8_t MSG_SET_KNOB_STREAM = 0x5E;     // enabled(0/1) — when 1, firmware sends MSG_KNOB_READINGS at
+                                                   // ~10Hz with raw and filtered ADC values for all knob and CV
+                                                   // inputs. Useful for diagnosing crosstalk, noise, and
+                                                   // calibration issues. Acked with MSG_ACK.
 constexpr uint8_t MSG_SAVE_SLOT = 0x69;           // slot(0-7) - saves the live pattern's first
                                                    // FlashStore::NUM_SAVE_TRACKS tracks; replies with MSG_SLOT_BITMAP
 constexpr uint8_t MSG_LOAD_SLOT = 0x6A;           // slot(0-7) - loads into those tracks; NACK if slot empty;

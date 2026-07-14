@@ -14,16 +14,18 @@ pico_sdk_init()
 add_executable(stepbridge
         main.cpp
         sequencer.cpp
-        flash_store.cpp
+        usb_link.cpp
         usb_descriptors.c
+        flash_store.cpp
         )
 
-# copy_to_ram: required for safe multicore flash access — puts the whole
-# binary in RAM so no flash reads happen during ProcessSample or flash writes.
-# Essential from day one per RP2040_dual_core_flash_safety_notes.md.
+# copy_to_ram: per the Workshop Computer's own AI directive and the prior
+# project's flash-safety notes, this is tried first (before any
+# __not_in_flash_func/multicore_lockout work) since it puts the whole
+# binary in RAM and plausibly avoids that class of bug entirely.
 pico_set_binary_type(stepbridge copy_to_ram)
 
-# Without this, firmware works once after flashing but fails after a hardware reset.
+# Without this, firmware works once after flashing but fails after a reset.
 target_compile_definitions(stepbridge PRIVATE PICO_XOSC_STARTUP_DELAY_MULTIPLIER=64)
 
 target_include_directories(stepbridge PRIVATE ${CMAKE_CURRENT_LIST_DIR})
@@ -42,8 +44,5 @@ target_link_libraries(stepbridge
         hardware_flash
         )
 
-# M0 uses no stdio — USB is handled directly through TinyUSB, not pico stdio.
 pico_enable_stdio_usb(stepbridge 0)
-pico_enable_stdio_uart(stepbridge 0)
-
 pico_add_extra_outputs(stepbridge)
