@@ -346,6 +346,18 @@
   .doc-toc a:hover{color:var(--blue);border-left-color:var(--blue);}
 
   /* ── Accent flash ── */
+  @keyframes mut-shimmer{
+    0%,100%{box-shadow:none;}
+    50%{box-shadow:0 0 12px 4px color-mix(in srgb,var(--green) 55%,transparent);}
+  }
+  .ribbon.mut-active{
+    border-radius:2px;
+    animation:mut-shimmer 3s ease-in-out infinite;
+  }
+  @media(prefers-reduced-motion:reduce){
+    .ribbon.mut-active{animation:none;box-shadow:0 0 8px 3px color-mix(in srgb,var(--green) 45%,transparent);}
+  }
+
   @keyframes accent-flash{
     0%{box-shadow:0 0 0 2px var(--red),0 0 12px color-mix(in srgb,var(--red) 60%,transparent);border-color:var(--red);}
     100%{box-shadow:none;}
@@ -917,6 +929,8 @@ let rxBuf=new Uint8Array(0);
 let pattern=null,lastStateBytes=null,slotBitmap=0,transportStopped=false,lastUsedSlot=null,pendingSlot=null;
 const trackUndoAvailable={}; // ti -> bool; true after Randomize, false after Undo or load
 const latchedUnsaved=new Set(); // tracks latched but not yet saved to flash
+const _lenSendTimer={};
+const _shiftSendTimer={};
 let ribbonDragging=false; // true while any ribbon has pointer capture — blocks mid-drag renderEditor()
 let panelFocusTrack=-1, panelFocusStep=-1; // last known hardware panel selection
 
@@ -1703,7 +1717,7 @@ function buildTrackBlock(ti){
   const cols=`repeat(${t.length},1fr)`;
 
   const ribbon=document.createElement('div');
-  ribbon.className='ribbon'; ribbon.id='ribbon-'+ti;
+  ribbon.className='ribbon'+(t.mutEnabled?' mut-active':''); ribbon.id='ribbon-'+ti;
   ribbon.style.gridTemplateColumns=cols;
   for(let si=0;si<t.length;si++)ribbon.appendChild(buildStepCell(ti,si));
   addRibbonPointerHandlers(ribbon,ti);
@@ -1748,14 +1762,14 @@ function buildTrackBlock(ti){
 
   // Length
   const lenCtrl=document.createElement('div'); lenCtrl.className='ctrl-small';
-  const decBtn=document.createElement('button'); decBtn.textContent='−'; decBtn.onclick=()=>changeLength(ti,-1);
-  const lenIn=document.createElement('input');
-  lenIn.type='number'; lenIn.min=1; lenIn.max=64; lenIn.value=t.length; lenIn.id='len-'+ti;
-  lenIn.onchange=()=>changeLength(ti,0,parseInt(lenIn.value));
-  const incBtn=document.createElement('button'); incBtn.textContent='+'; incBtn.onclick=()=>changeLength(ti,+1);
   const lenLbl=document.createElement('label'); lenLbl.textContent='Length';
+  const lenIn=document.createElement('input');
+  lenIn.type='range'; lenIn.min=1; lenIn.max=64; lenIn.value=t.length; lenIn.id='len-'+ti;
+  const lenVal=mk('span','font-family:var(--mono);font-size:11px;min-width:22px',t.length);
+  lenIn.oninput=()=>{lenVal.textContent=lenIn.value;};
+  lenIn.onchange=()=>changeLength(ti,0,parseInt(lenIn.value));
   const stepsLbl=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','steps');
-  lenCtrl.append(lenLbl,decBtn,lenIn,incBtn,stepsLbl);
+  lenCtrl.append(lenLbl,lenIn,lenVal,stepsLbl);
 
   // Bar / time signature — regular or irregular
   const barCtrl=document.createElement('div'); barCtrl.className='ctrl-small';
@@ -1875,22 +1889,22 @@ function buildTrackBlock(ti){
   const shiftCtrl=document.createElement('div'); shiftCtrl.className='ctrl-small';
   const shiftLbl=document.createElement('label'); shiftLbl.textContent='Live Shift';
   shiftLbl.title='Moves output pitch without changing stored notes';
-  const shiftDecBtn=document.createElement('button'); shiftDecBtn.textContent='−';
   const shiftIn=document.createElement('input');
-  shiftIn.type='number'; shiftIn.min=-24; shiftIn.max=24;
-  shiftIn.value=t.shift||0; shiftIn.id='shift-'+ti; shiftIn.style.width='48px';
-  const shiftIncBtn=document.createElement('button'); shiftIncBtn.textContent='+';
+  shiftIn.type='range'; shiftIn.min=-24; shiftIn.max=24;
+  shiftIn.value=t.shift||0; shiftIn.id='shift-'+ti;
+  const fmtShift=v=>v>0?'+'+v:String(v);
+  const shiftVal=mk('span','font-family:var(--mono);font-size:11px;min-width:28px',fmtShift(t.shift||0));
   const shiftSemi=mk('span','font-family:var(--mono);font-size:11px;color:var(--dim)','semi');
   function applyShift(v){
     v=Math.max(-24,Math.min(24,v));
-    shiftIn.value=v;
+    shiftIn.value=v; shiftVal.textContent=fmtShift(v);
     pattern.tracks[ti].shift=v;
-    sendSetShift(ti,v);
+    clearTimeout(_shiftSendTimer[ti]);
+    _shiftSendTimer[ti]=setTimeout(()=>sendSetShift(ti,v),150);
   }
-  shiftDecBtn.onclick=()=>applyShift((parseInt(shiftIn.value)||0)-1);
-  shiftIncBtn.onclick=()=>applyShift((parseInt(shiftIn.value)||0)+1);
+  shiftIn.oninput=()=>{ shiftVal.textContent=fmtShift(parseInt(shiftIn.value)); };
   shiftIn.onchange=()=>applyShift(parseInt(shiftIn.value)||0);
-  shiftCtrl.append(shiftLbl,shiftDecBtn,shiftIn,shiftIncBtn,shiftSemi);
+  shiftCtrl.append(shiftLbl,shiftIn,shiftVal,shiftSemi);
 
   // Transpose Notes — destructive one-shot semitone shift of stored notes
   const transpCtrl=document.createElement('div'); transpCtrl.className='ctrl-small';
@@ -1969,19 +1983,18 @@ function buildTrackBlock(ti){
   const arpRestsChk=document.createElement('input'); arpRestsChk.type='checkbox';
   arpRestsChk.checked=!!t.arpIncludeRests;
   arpRestsChk.title='Include rest steps as playback positions (Converge/Diverge only)';
-  arpRestsChk.style.marginLeft='4px';
-  const arpRestsLbl=mk('span','font-size:10px;color:var(--dim)','rests');
+  const arpRestsLbl=mk('label','font-size:10px;color:var(--dim);margin-left:4px;cursor:pointer','rests');
+  arpRestsLbl.title=arpRestsChk.title;
+  arpRestsLbl.prepend(arpRestsChk);
   const updateArpRestsVisibility=()=>{
     const v=parseInt(arpSel.value);
-    const active=(v===5||v===6);
-    arpRestsChk.style.opacity=active?'1':'0.35';
-    arpRestsLbl.style.opacity=active?'1':'0.35';
+    arpRestsLbl.style.opacity=(v===5||v===6)?'1':'0.35';
   };
   const sendArp=()=>sendSetArpMode(ti,parseInt(arpSel.value),arpRestsChk.checked);
   arpSel.onchange=()=>{updateArpRestsVisibility();sendArp();};
   arpRestsChk.onchange=sendArp;
   updateArpRestsVisibility();
-  arpCtrl.append(arpLbl,arpSel,arpRestsChk,arpRestsLbl);
+  arpCtrl.append(arpLbl,arpSel,arpRestsLbl);
 
   // Randomize style selector + vary-structure toggle
   const randCtrl=document.createElement('div'); randCtrl.className='ctrl-small';
@@ -1999,19 +2012,19 @@ function buildTrackBlock(ti){
   const randVaryLenChk=document.createElement('input'); randVaryLenChk.type='checkbox';
   randVaryLenChk.checked=!!(randStructurePref[ti]&1);
   randVaryLenChk.title='Vary track length when randomizing';
-  randVaryLenChk.style.marginLeft='6px';
-  const randVaryLenLbl=mk('span','font-size:10px;color:var(--dim)','vary len');
+  const randVaryLenLbl=mk('label','font-size:10px;color:var(--dim);margin-left:6px;cursor:pointer;display:inline-flex;align-items:center;gap:3px','vary len');
+  randVaryLenLbl.prepend(randVaryLenChk);
   const randVaryTimeSigChk=document.createElement('input'); randVaryTimeSigChk.type='checkbox';
   randVaryTimeSigChk.checked=!!(randStructurePref[ti]&2);
   randVaryTimeSigChk.title='Vary time signature when randomizing';
-  randVaryTimeSigChk.style.marginLeft='4px';
-  const randVaryTimeSigLbl=mk('span','font-size:10px;color:var(--dim)','vary meter');
+  const randVaryTimeSigLbl=mk('label','font-size:10px;color:var(--dim);margin-left:6px;cursor:pointer;display:inline-flex;align-items:center;gap:3px','vary meter');
+  randVaryTimeSigLbl.prepend(randVaryTimeSigChk);
   const updateRandStructPref=()=>{
     randStructurePref[ti]=(randVaryLenChk.checked?1:0)|(randVaryTimeSigChk.checked?2:0);
   };
   randVaryLenChk.onchange=updateRandStructPref;
   randVaryTimeSigChk.onchange=updateRandStructPref;
-  randCtrl.append(randStyleLbl,randStyleSel,randVaryLenChk,randVaryLenLbl,randVaryTimeSigChk,randVaryTimeSigLbl);
+  randCtrl.append(randStyleLbl,randStyleSel,randVaryLenLbl,randVaryTimeSigLbl);
 
   // Mutation (Stockhausen continuous drift) controls
   const mutCtrl=document.createElement('div'); mutCtrl.className='ctrl-small';
@@ -2019,9 +2032,8 @@ function buildTrackBlock(ti){
 
   const mutEnableChk=document.createElement('input'); mutEnableChk.type='checkbox';
   mutEnableChk.checked=t.mutEnabled||false;
-  mutEnableChk.style.margin='0 4px 0 0'; mutEnableChk.style.verticalAlign='middle';
-  const mutEnableLbl=mk('label','font-weight:600','Mutation');
-  mutEnableLbl.style.cursor='pointer';
+  mutEnableChk.style.margin='0';
+  const mutEnableLbl=mk('label','font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px','Mutation');
   mutEnableLbl.title='Stockhausen-style continuous drift: note pitches gradually wander over time. Overlay mode — stored pattern is unchanged until you Latch.';
   mutEnableLbl.prepend(mutEnableChk);
 
@@ -2045,11 +2057,21 @@ function buildTrackBlock(ti){
 
   const mutScaleChk=document.createElement('input'); mutScaleChk.type='checkbox';
   mutScaleChk.checked=t.mutScaleConstrain||false;
-  mutScaleChk.style.margin='0 2px 0 10px';
+  mutScaleChk.style.margin='0';
   mutScaleChk.title='Keep drifted notes in the track\'s current key and scale. In this mode the delta accumulates in semitones internally but output is snapped — notes only shift audibly when the delta crosses to the next scale degree.';
-  const mutScaleLbl=mk('span','font-size:10px;color:var(--dim)','in scale');
+  const mutScaleLbl=mk('label','font-size:10px;color:var(--dim);margin-left:10px;cursor:pointer;display:inline-flex;align-items:center;gap:3px','in scale');
+  mutScaleLbl.title=mutScaleChk.title;
+  mutScaleLbl.prepend(mutScaleChk);
 
-  const sendMut=()=>sendSetMutation(ti,mutEnableChk.checked,parseInt(mutRateIn.value),parseInt(mutDepthIn.value),mutScaleChk.checked);
+  const sendMut=()=>{
+    const enabled=mutEnableChk.checked;
+    sendSetMutation(ti,enabled,parseInt(mutRateIn.value),parseInt(mutDepthIn.value),mutScaleChk.checked);
+    // Keep pattern in sync — CMD_SET_MUTATION is ACK-only so RSP_STATE never arrives
+    // to update it. Without this, any renderEditor() call reverts the ribbon class.
+    if(pattern&&pattern.tracks[ti])pattern.tracks[ti].mutEnabled=enabled?1:0;
+    const r=document.getElementById('ribbon-'+ti);
+    if(r)r.classList.toggle('mut-active',enabled);
+  };
   mutEnableChk.onchange=sendMut;
   mutRateIn.onchange=sendMut;
   mutDepthIn.onchange=sendMut;
@@ -2065,7 +2087,7 @@ function buildTrackBlock(ti){
     sendMutationLatch(ti);
   };
 
-  mutCtrl.append(mutEnableLbl,mutRateLbl,mutRateIn,mutRateVal,mutDepthLbl,mutDepthIn,mutDepthVal,mutScaleChk,mutScaleLbl,mutLatchBtn);
+  mutCtrl.append(mutEnableLbl,mutRateLbl,mutRateIn,mutRateVal,mutDepthLbl,mutDepthIn,mutDepthVal,mutScaleLbl,mutLatchBtn);
 
   // Accent CV output mode (CV tracks only) — audio L/R jack, AC-coupled transient shapes
   const accentOutCtrl=document.createElement('div'); accentOutCtrl.className='ctrl-small';
@@ -2521,8 +2543,16 @@ function changeLength(ti,delta,absolute){
     ?Math.max(1,Math.min(64,absolute))
     :Math.max(1,Math.min(64,t.length+delta));
   if(newLen===t.length)return;
-  sendSetLength(ti,newLen);
-  setTimeout(sendGetState,100);
+  if(newLen>t.steps.length){
+    const last=t.steps[t.steps.length-1]||{note:-1,gateLenPct:50,tied:false,accent:false,ratchetCount:1,probability:7};
+    while(t.steps.length<newLen)t.steps.push({...last});
+  }
+  pattern.tracks[ti].length=newLen;
+  rebuildRibbons(ti);
+  const li=document.getElementById('len-'+ti);
+  if(li){li.value=newLen;li.dispatchEvent(new Event('input'));}
+  clearTimeout(_lenSendTimer[ti]);
+  _lenSendTimer[ti]=setTimeout(()=>sendSetLength(ti,newLen),150);
 }
 
 // ── Diagnostics ───────────────────────────────────────────────────────────────
