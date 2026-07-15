@@ -7,13 +7,13 @@
   :root{
     --bg:#0f1117;--surface:#1a1d2a;--border:#2a2e42;
     --text:#c8cce0;--dim:#666e8a;--fg:#c8cce0;--card:#1a1d2a;
-    --blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;
+    --blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;--purple:#a78bfa;
     --mono:'SF Mono','Fira Code',ui-monospace,monospace;
     --sans:system-ui,-apple-system,sans-serif;
   }
-  @media(prefers-color-scheme:light){:root{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;}}
-  :root[data-theme=light]{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;}
-  :root[data-theme=dark]{--bg:#0f1117;--surface:#1a1d2a;--border:#2a2e42;--text:#c8cce0;--dim:#666e8a;--fg:#c8cce0;--card:#1a1d2a;--blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;}
+  @media(prefers-color-scheme:light){:root{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;--purple:#7c3aed;}}
+  :root[data-theme=light]{--bg:#f0f2f8;--surface:#fff;--border:#d0d5e8;--text:#1a1e2e;--dim:#8890aa;--fg:#1a1e2e;--card:#fff;--blue:#2b6fdb;--green:#1d8f62;--red:#c03030;--amber:#b86c00;--teal:#0891a8;--purple:#7c3aed;}
+  :root[data-theme=dark]{--bg:#0f1117;--surface:#1a1d2a;--border:#2a2e42;--text:#c8cce0;--dim:#666e8a;--fg:#c8cce0;--card:#1a1d2a;--blue:#4e8fff;--green:#3dbe82;--red:#d95b5b;--amber:#e09340;--teal:#2bc9c9;--purple:#a78bfa;}
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;padding:16px 10px 60px;}
@@ -201,6 +201,13 @@
   .step-cell.accented .pitch-bar{background:color-mix(in srgb,var(--blue) 60%,var(--red));}
   .step-cell.playing.accented .pitch-bar{background:color-mix(in srgb,var(--blue) 50%,var(--red));}
   .step-cell.tied.accented .pitch-bar{background:color-mix(in srgb,var(--teal) 60%,var(--red));}
+  .chord-glyph{position:absolute;top:2px;left:3px;font-size:8px;line-height:1;
+    color:color-mix(in srgb,var(--purple) 80%,transparent);pointer-events:none;}
+  .chord-preset-btn,.chord-deg-btn{font-family:var(--mono);font-size:10px;padding:2px 5px;
+    border:1px solid var(--border);background:var(--bg);color:var(--dim);
+    border-radius:3px;cursor:pointer;transition:border-color .1s,color .1s;}
+  .chord-preset-btn:hover,.chord-deg-btn:hover{border-color:var(--purple);color:var(--purple);}
+  .chord-preset-btn.active,.chord-deg-btn.active{border-color:var(--purple)!important;color:var(--purple)!important;}
 
   /* ── Gate strip ── */
   .gate-strip{display:grid;gap:2px;height:28px;margin-top:2px;user-select:none;touch-action:none;}
@@ -610,7 +617,7 @@
 
     <div class="doc-section">
       <h3 id="doc-timing">Track Footer — Timing Tab</h3>
-      <div class="doc-note">The track footer is tabbed: Timing · Playback · Pitch · MIDI. The active tab persists across state refreshes so it does not reset while editing.</div>
+      <div class="doc-note">The track footer is tabbed: Timing · Playback · Generative · Chord · Pitch · MIDI · Output. The active tab persists across state refreshes so it does not reset while editing.</div>
       <table class="doc-table">
         <tr><th>Control</th><th>Effect</th></tr>
         <tr><td>Length</td><td>Number of active steps (1–64). Steps beyond the current length are hidden but not erased — regrowing the track reveals the unchanged data. Scrollable.</td></tr>
@@ -791,6 +798,7 @@
         <tr><td>0x2C</td><td>SET_TIMESIG_IRREGULAR</td><td>[track, count(1–8), groups…]</td><td>ACK (sets additive meter groups e.g. [3,3,2] for 3+3+2; sets timeSigMode to Irregular)</td></tr>
         <tr><td>0x2D</td><td>SET_MUTATION</td><td>[track, enabled(0/1), rateIdx(0–7), depthIdx(0–7), scaleConstrain(0/1)]</td><td>ACK + STATE (enable/disable Stockhausen drift; rate selects tick interval {4,8,…,512 steps}; depth controls probability and ±semitone range; scaleConstrain snaps output to track key/scale)</td></tr>
         <tr><td>0x2E</td><td>MUTATION_LATCH</td><td>[track]</td><td>ACK + STATE (write current overlay note deltas into stored steps, clear deltas — commits happy accidents permanently)</td></tr>
+        <tr><td>0x2F</td><td>SET_CHORD</td><td>[track, template:u8, arpMode:u8, variation:u8, passingTonePct:u8]</td><td>ACK + STATE (chord arp: template=bitmask of scale degrees (bit 0=root, bit 2=3rd, …); arpMode 0=Ascending 1=Descending 2=PingPong 3=MelRandom 4=WtRandom 5=FullRandom 6=Simultaneous; variation 0–3; passingTonePct 0–100)</td></tr>
       </table>
       <div class="doc-note" style="margin-top:8px">RSP_STATE layout (SBT9): [numTracks][bpm_lo][bpm_hi][clockSource] then per track: [length][midiCh][midiEnabled][key][scale][shift(int8)][portaRateMs_lo][portaRateMs_hi][arpMode][accentOutMode][timeSigNum][timeSigMode][irregularGroupCount][irregularGroups×8] then per step: [note][gatePct][flags(tied|accent|ratchet)].<br>Step flags: bit0=tied, bit1=accent, bits4-2=ratchetCount−1, bits7-5=probability(0-7, 7=always). note=127 → rest (WIRE_REST).<br>timeSigMode: 0=Regular, 1=Irregular.<br>Scale enum: 0=Major, 1=Natural Minor, 2=Pentatonic Major, 3=Chromatic, 4=Harmonic Minor, 5=Melodic Minor, 6=Dorian, 7=Phrygian, 8=Lydian, 9=Mixolydian, 10=Locrian, 11=Blues, 12=Whole Tone, 13=Pentatonic Minor, 14=Hungarian Minor, 15=Japanese.<br>accentOutMode: 0=Off, 1=Spike (5ms burst), 2=Gate (gate duration), 3=Hybrid (spike+sustain). Audio L→T0, Audio R→T1. AC-coupled — sustained DC decays at the receiving end.</div>
     </div>
@@ -899,7 +907,7 @@ const CMD={
   SET_TRACK_SHIFT:0x21,SNAP_TO_SCALE:0x22,TRANSPOSE_NOTES:0x23,UNDO_RANDOMIZE:0x24,
   SET_TRACK_SCALE:0x25,GET_VERSION:0x26,SET_GLIDE:0x27,SET_ARP_MODE:0x28,
   GLOBAL_RANDOMIZE:0x29,SET_ACCENT_MODE:0x2A,SET_TIMESIG_REGULAR:0x2B,SET_TIMESIG_IRREGULAR:0x2C,
-  SET_MUTATION:0x2D,MUTATION_LATCH:0x2E
+  SET_MUTATION:0x2D,MUTATION_LATCH:0x2E,SET_CHORD:0x2F
 };
 const RSP={ACK:0x40,NACK:0x41,STATE:0x42,PLAYHEAD:0x43,PANEL_STATE:0x44,SLOT_BITMAP:0x45,TEMPO:0x46,VERSION:0x47};
 // Version tracking — must match firmware FW_VERSION_MAJOR/MINOR in cdc_proto.h
@@ -1238,6 +1246,7 @@ function sendSetGlide(ti,rateMs){rateMs=Math.max(0,Math.min(65535,rateMs|0));sen
 function sendSetArpMode(ti,mode,includeRests){sendFrame(CMD.SET_ARP_MODE,new Uint8Array([ti,(mode&0x7F)|(includeRests?0x80:0)]));}
 function sendSetAccentMode(ti,mode){sendFrame(CMD.SET_ACCENT_MODE,new Uint8Array([ti,mode]));}
 function sendSetMutation(ti,enabled,rateIdx,depthIdx,scaleConstrain){sendFrame(CMD.SET_MUTATION,new Uint8Array([ti,enabled?1:0,rateIdx,depthIdx,scaleConstrain?1:0]));}
+function sendSetChord(ti,template,arpMode,variation,passingTonePct){sendFrame(CMD.SET_CHORD,new Uint8Array([ti,template,arpMode,variation,passingTonePct]));}
 function sendMutationLatch(ti){
   latchedUnsaved.add(ti);
   sendFrame(CMD.MUTATION_LATCH,new Uint8Array([ti]));
@@ -1525,6 +1534,10 @@ function parseState(bytes){
     const mutRateIdx=bytes[pos++]||0;
     const mutDepthIdx=bytes[pos++]||0;
     const mutScaleConstrain=bytes[pos++]!==0;
+    const chordTemplate=bytes[pos++]||0;
+    const chordArpMode=bytes[pos++]||0;
+    const chordVariation=bytes[pos++]||0;
+    const chordPassingTonePct=bytes[pos++]||0;
     const steps=[];
     for(let si=0;si<length;si++){
       const rawNote=bytes[pos++],gateLenPct=bytes[pos++],flags=bytes[pos++];
@@ -1532,7 +1545,7 @@ function parseState(bytes){
         tied:(flags&STEP_FLAG_TIED)!==0,accent:(flags&STEP_FLAG_ACCENT)!==0,
         ratchetCount:((flags>>2)&7)+1,probability:(flags>>5)&7});
     }
-    tracks.push({length,midiChannel,midiEnabled,key,scale,shift,portaRateMs,arpMode,arpIncludeRests,accentOutMode,timeSigNum,timeSigMode,irregularGroupCount,irregularGroups,mutEnabled,mutRateIdx,mutDepthIdx,mutScaleConstrain,steps});
+    tracks.push({length,midiChannel,midiEnabled,key,scale,shift,portaRateMs,arpMode,arpIncludeRests,accentOutMode,timeSigNum,timeSigMode,irregularGroupCount,irregularGroups,mutEnabled,mutRateIdx,mutDepthIdx,mutScaleConstrain,chordTemplate,chordArpMode,chordVariation,chordPassingTonePct,steps});
   }
   return{numTracks,bpm,clockSource,tracks};
 }
@@ -2103,13 +2116,115 @@ function buildTrackBlock(ti){
   const accentOutNote=mk('span','font-size:10px;color:var(--dim)','audio jack');
   accentOutCtrl.append(accentOutLbl,accentOutSel,accentOutNote);
 
-  // Tabbed footer — Timing | Playback | Pitch | MIDI | Output
+  // Chord arp — subdivide each step into N sub-pulses, one chord tone per sub-pulse
+  const CHORD_ARP_MODE_NAMES=['Ascending','Descending','PingPong','Mel. Random','Wt. Random','Full Random','Simultaneous'];
+  const CHORD_PRESETS=[
+    {label:'Off',    val:0x00, title:'No chord arp'},
+    {label:'1·3·5',  val:0x15, title:'Triad (root, 3rd, 5th)'},
+    {label:'1·3·5·7',val:0x55, title:'7th chord (root, 3rd, 5th, 7th)'},
+    {label:'1·4·5',  val:0x19, title:'Sus4 (root, 4th, 5th)'},
+    {label:'1·5',    val:0x11, title:'Power chord (root, 5th)'},
+  ];
+  const chordCtrl=document.createElement('div'); chordCtrl.className='ctrl-small';
+  const chordTemplateLbl=mk('label','font-weight:600','Chord');
+  chordTemplateLbl.title='Select which scale degrees to include in the arp. Bit 0=root, bit 1=2nd degree, bit 2=3rd, …';
+
+  const chordPresetRow=document.createElement('div');
+  chordPresetRow.style.cssText='display:flex;flex-wrap:wrap;gap:3px;margin:3px 0 2px;';
+  const chordDegRow=document.createElement('div');
+  chordDegRow.style.cssText='display:flex;gap:3px;margin:2px 0;';
+  const chordDegBtns=[];
+
+  const syncChordUI=()=>{
+    const ct=pattern.tracks[ti].chordTemplate||0;
+    chordDegBtns.forEach((btn,b)=>btn.classList.toggle('active',(ct>>b)&1));
+    chordPresetRow.querySelectorAll('.chord-preset-btn').forEach(btn=>
+      btn.classList.toggle('active',parseInt(btn.dataset.val)===ct));
+  };
+  const sendChord=()=>{
+    const ct=pattern.tracks[ti].chordTemplate||0;
+    const am=pattern.tracks[ti].chordArpMode||0;
+    const cv=pattern.tracks[ti].chordVariation||0;
+    const cp=pattern.tracks[ti].chordPassingTonePct||0;
+    sendSetChord(ti,ct,am,cv,cp);
+    syncChordUI();
+    // refresh chord glyph on all cells
+    for(let si=0;si<pattern.tracks[ti].length;si++){
+      const cell=document.getElementById('cell-'+ti+'-'+si);
+      if(cell){
+        let g=cell.querySelector('.chord-glyph');
+        if(ct!==0){if(!g){g=document.createElement('div');g.className='chord-glyph';g.textContent='♦';cell.appendChild(g);}}
+        else{if(g)g.remove();}
+      }
+    }
+  };
+
+  CHORD_PRESETS.forEach(p=>{
+    const btn=document.createElement('button');
+    btn.className='chord-preset-btn'+(t.chordTemplate===p.val?' active':'');
+    btn.dataset.val=String(p.val);
+    btn.textContent=p.label; btn.title=p.title;
+    btn.onclick=()=>{ pattern.tracks[ti].chordTemplate=p.val; sendChord(); };
+    chordPresetRow.appendChild(btn);
+  });
+
+  const DEG_LABELS=['R','2','3','4','5','6','7'];
+  DEG_LABELS.forEach((lbl,b)=>{
+    const btn=document.createElement('button');
+    btn.className='chord-deg-btn'+((t.chordTemplate>>b)&1?' active':'');
+    btn.textContent=lbl;
+    btn.title='Scale degree '+(b===0?'(root)':'('+(b+1)+'th)');
+    btn.onclick=()=>{ pattern.tracks[ti].chordTemplate^=(1<<b); sendChord(); };
+    chordDegBtns.push(btn);
+    chordDegRow.appendChild(btn);
+  });
+
+  const chordModeLbl=mk('label','font-size:10px;color:var(--dim)','Mode');
+  const chordModeSel=document.createElement('select'); chordModeSel.style.fontSize='11px';
+  CHORD_ARP_MODE_NAMES.forEach((name,i)=>{
+    const opt=document.createElement('option'); opt.value=i; opt.textContent=name;
+    chordModeSel.appendChild(opt);
+  });
+  chordModeSel.value=t.chordArpMode||0;
+  chordModeSel.onchange=()=>{ pattern.tracks[ti].chordArpMode=parseInt(chordModeSel.value); sendChord(); };
+
+  const chordVarLbl=mk('label','font-size:10px;color:var(--dim);margin-left:10px','Var');
+  chordVarLbl.title='Variation: 0=deterministic sequence, 1–3=increasing randomness applied per step';
+  const chordVarIn=document.createElement('input');
+  chordVarIn.type='range'; chordVarIn.min=0; chordVarIn.max=3; chordVarIn.step=1;
+  chordVarIn.value=t.chordVariation||0;
+  chordVarIn.style.cssText='width:56px;vertical-align:middle;margin:0 4px';
+  const kVarLabels=['None','Low','Med','High'];
+  const chordVarVal=mk('span','font-size:10px;color:var(--dim)',kVarLabels[t.chordVariation||0]);
+  chordVarIn.oninput=()=>{chordVarVal.textContent=kVarLabels[parseInt(chordVarIn.value)];};
+  chordVarIn.onchange=()=>{ pattern.tracks[ti].chordVariation=parseInt(chordVarIn.value); sendChord(); };
+
+  const chordPTLbl=mk('label','font-size:10px;color:var(--dim);margin-left:10px','Pass%');
+  chordPTLbl.title='Probability (%) of inserting a chromatic passing tone between adjacent arp tones';
+  const chordPTIn=document.createElement('input');
+  chordPTIn.type='range'; chordPTIn.min=0; chordPTIn.max=100; chordPTIn.step=5;
+  chordPTIn.value=t.chordPassingTonePct||0;
+  chordPTIn.style.cssText='width:70px;vertical-align:middle;margin:0 4px';
+  const chordPTVal=mk('span','font-family:var(--mono);font-size:10px',(t.chordPassingTonePct||0)+'%');
+  chordPTIn.oninput=()=>{chordPTVal.textContent=chordPTIn.value+'%';};
+  chordPTIn.onchange=()=>{ pattern.tracks[ti].chordPassingTonePct=parseInt(chordPTIn.value); sendChord(); };
+
+  const chordModeRow=document.createElement('div');
+  chordModeRow.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:4px;';
+  chordModeRow.append(chordModeLbl,chordModeSel,chordVarLbl,chordVarIn,chordVarVal,chordPTLbl,chordPTIn,chordPTVal);
+
+  const chordNote=mk('div','font-size:9px;color:var(--dim);margin-top:4px',
+    'Simultaneous fires all tones at once on MIDI tracks. CV tracks always arpeggiate sub-steps.');
+  chordCtrl.append(chordTemplateLbl,chordPresetRow,chordDegRow,chordModeRow,chordNote);
+
+  // Tabbed footer — Timing | Playback | Generative | Chord | Pitch | MIDI | Output
   const outputNodes=[glideCtrl];
   if(ti<2)outputNodes.push(accentOutCtrl); // accent CV only available on CV tracks
   const TAB_GROUPS=[
     {id:'timing',    label:'Timing',     nodes:[lenCtrl,barCtrl]},
     {id:'playback',  label:'Playback',   nodes:[arpCtrl]},
     {id:'generative',label:'Generative', nodes:[randCtrl,mutCtrl]},
+    {id:'chord',     label:'Chord',      nodes:[chordCtrl]},
     {id:'pitch',     label:'Pitch',      nodes:[shiftCtrl,transpCtrl,scaleCtrl]},
     {id:'midi',      label:'MIDI',       nodes:[chCtrl]},
     {id:'output',    label:'Output',     nodes:outputNodes},
@@ -2216,6 +2331,13 @@ function buildStepCell(ti,si){
   const accentDot=document.createElement('div');
   accentDot.className='step-accent-dot';
   cell.appendChild(accentDot);
+
+  if((pattern.tracks[ti].chordTemplate||0)!==0){
+    const chordGlyph=document.createElement('div');
+    chordGlyph.className='chord-glyph';
+    chordGlyph.textContent='♦';
+    cell.appendChild(chordGlyph);
+  }
 
   const indRow=document.createElement('div');
   indRow.className='step-indicator-row';

@@ -94,6 +94,10 @@ bool FlashSaveSlot(const Pattern &p, int slot)
         st.timeSigMode         = (uint8_t)t.timeSigMode;
         st.irregularGroupCount = t.irregularGroupCount;
         std::memcpy(st.irregularGroups, t.irregularGroups, MAX_IRREGULAR_GROUPS);
+        st.chordTemplate       = t.chordTemplate;
+        st.chordArpMode        = (uint8_t)t.chordArpMode;
+        st.chordVariation      = t.chordVariation;
+        st.chordPassingTonePct = t.chordPassingTonePct;
         for (int si = 0; si < MAX_STEPS; si++) {
             const Step &s   = t.steps[si];
             StoredStep &out = st.steps[si];
@@ -143,6 +147,10 @@ bool FlashLoadSlot(Pattern &p, int slot)
         t.timeSigMode         = (st.timeSigMode == 1) ? TimeSigMode::Irregular : TimeSigMode::Regular;
         t.irregularGroupCount = std::min((uint8_t)MAX_IRREGULAR_GROUPS, st.irregularGroupCount);
         std::memcpy(t.irregularGroups, st.irregularGroups, MAX_IRREGULAR_GROUPS);
+        t.chordTemplate       = st.chordTemplate;
+        t.chordArpMode        = (ChordArpMode)std::min(st.chordArpMode, (uint8_t)(kChordArpModeCount - 1u));
+        t.chordVariation      = std::min(st.chordVariation, (uint8_t)3u);
+        t.chordPassingTonePct = std::min(st.chordPassingTonePct, (uint8_t)100u);
         RebuildArpOrder(t); // no-op unless arpMode is Converge or Diverge
         for (int si = 0; si < MAX_STEPS; si++) {
             const StoredStep &in = st.steps[si];

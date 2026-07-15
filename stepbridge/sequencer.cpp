@@ -1,4 +1,5 @@
 #include "sequencer.h"
+#include <algorithm>
 #include <cstring>
 
 namespace stepbridge
@@ -94,6 +95,8 @@ void AdvanceTrackSample(Track &track, uint32_t samplesPerStep, bool stepAdvance)
 			track.randState = track.randState * 1664525u + 1013904223u;
 			track.currentStepFires = ((track.randState >> 25) % 7u) < ns.probability;
 		}
+		// Build chord tone sequence for this step (no-op if chordTemplate==0).
+		BuildChordSequence(track, samplesPerStep);
 	}
 	else
 	{
@@ -118,6 +121,23 @@ void AdvanceTrackSample(Track &track, uint32_t samplesPerStep, bool stepAdvance)
 		// whether a step boundary re-strikes or just continues, based on
 		// this step's tied flag and whether the pitch changed.
 		track.gateOpen = true;
+		return;
+	}
+
+	// Chord arp sub-step gate: takes priority over ratchet when active.
+	// Simultaneous mode (chordSubTotal set but chordArpMode==Simultaneous) uses
+	// regular mono gate timing — main.cpp fires all tones at gate-open.
+	if (track.chordSubTotal >= 2 && track.chordArpMode != ChordArpMode::Simultaneous)
+	{
+		const uint32_t subPulseSamples = samplesPerStep / track.chordSubTotal;
+		if (subPulseSamples > 0) {
+			track.chordSubStep = (uint8_t)std::min(
+				(uint32_t)(track.chordSubTotal - 1u),
+				track.sampleInStep / subPulseSamples);
+			const uint32_t sampleInSub = track.sampleInStep % subPulseSamples;
+			const uint32_t gateSamples = std::max((uint32_t)1u, (subPulseSamples * (uint32_t)step.gateLenPct) / 100u);
+			track.gateOpen = sampleInSub < gateSamples;
+		}
 		return;
 	}
 
@@ -149,6 +169,8 @@ void ResetTrackPlayhead(Track &track)
 	track.gateOpen         = false;
 	track.pingPongDir      = true; // restart PingPong in forward direction
 	track.arpPosition      = 0;   // restart Converge/Diverge from beginning of sorted order
+	track.chordSubTotal    = 0;
+	track.chordSubStep     = 0;
 }
 
 // Returns the semitone-offset intervals for a scale and writes the count.
@@ -431,6 +453,164 @@ void RebuildArpOrder(Track &track)
 	// Clamp position in case arpNumSteps shrank after a length or content change.
 	if (track.arpNumSteps > 0 && track.arpPosition >= track.arpNumSteps)
 		track.arpPosition = 0;
+}
+
+// Returns the MIDI note 'stepsAbove' scale degrees above 'rootNote'.
+// stepsAbove=0 returns rootNote (snapped to scale); stepsAbove=1 returns the
+// next degree up, etc. Called at step-rate from BuildChordSequence — safe to
+// use NearestScaleNote here (not in the 48 kHz sample-rate path).
+static int GetScaleDegreeNote(int rootNote, uint8_t key, Scale scale, int stepsAbove)
+{
+	if (stepsAbove <= 0) return rootNote;
+	int count;
+	const int *pat = GetScalePattern(scale, count);
+	if (!pat) return std::max(0, std::min(126, rootNote + stepsAbove)); // chromatic: semitone steps
+
+	// Snap root to scale then find its index in the pattern.
+	const int root    = NearestScaleNote(rootNote, key, scale);
+	const int relRoot = ((root - (int)key) % 12 + 12) % 12;
+	int rootIdx = 0;
+	for (int i = 0; i < count; i++) { if (pat[i] == relRoot) { rootIdx = i; break; } }
+
+	// Walk up scale degrees.
+	int note = root, idx = rootIdx;
+	for (int d = 0; d < stepsAbove; d++) {
+		const int next     = (idx + 1) % count;
+		int       interval = pat[next] - pat[idx];
+		if (interval <= 0) interval += 12;
+		note += interval;
+		idx   = next;
+	}
+	return std::max(0, std::min(126, note));
+}
+
+void BuildChordSequence(Track &track, uint32_t samplesPerStep)
+{
+	track.chordSubTotal = 0;
+	track.chordSubStep  = 0;
+	if (track.chordTemplate == 0) return;
+
+	const Step &step = track.steps[track.currentStep];
+	if (step.note == WIRE_REST || step.tied || !track.currentStepFires) return;
+
+	// Effective root: mutation overlay + optional scale constrain.
+	int rootNote = (int)step.note + (int)track.mutNoteDelta[track.currentStep];
+	if (track.mutScaleConstrain && track.scale != Scale::Chromatic)
+		rootNote = NearestScaleNote(rootNote, track.key, track.scale);
+	rootNote = std::max(0, std::min(126, rootNote));
+
+	// Collect base chord tones from bitmask (bit 0 = root/degree1, bit 2 = degree3, …).
+	int8_t baseTones[7]; int baseCount = 0;
+	for (int bit = 0; bit < 7; bit++) {
+		if (!(track.chordTemplate & (1u << bit))) continue;
+		const int n = GetScaleDegreeNote(rootNote, track.key, track.scale, bit);
+		baseTones[baseCount++] = (int8_t)std::max(0, std::min(126, n));
+	}
+	if (baseCount <= 1) return; // nothing to arpeggiate
+
+	// For Simultaneous mode: store tones ascending, skip sub-pulse timing.
+	if (track.chordArpMode == ChordArpMode::Simultaneous) {
+		for (int i = 0; i < baseCount; i++) track.chordToneSeq[i] = baseTones[i];
+		track.chordSubTotal = (uint8_t)baseCount; // used by main.cpp to send chord note-ons
+		return;
+	}
+
+	// Build ordered sequence for arp modes.
+	// PingPong can expand to up+down: max 7+(7-2)=12 entries; use 14-slot buffer.
+	int8_t ordered[14]; int orderedCount = baseCount;
+
+	switch (track.chordArpMode) {
+	default:
+	case ChordArpMode::Ascending:
+		for (int i = 0; i < baseCount; i++) ordered[i] = baseTones[i];
+		break;
+	case ChordArpMode::Descending:
+		for (int i = 0; i < baseCount; i++) ordered[i] = baseTones[baseCount - 1 - i];
+		break;
+	case ChordArpMode::PingPong: {
+		int pos = 0;
+		for (int i = 0; i < baseCount && pos < 14; i++) ordered[pos++] = baseTones[i];
+		for (int i = baseCount - 2; i >= 1 && pos < 14;  i--) ordered[pos++] = baseTones[i];
+		orderedCount = pos;
+		break;
+	}
+	case ChordArpMode::MelodicRandom: {
+		// Start from root; prefer nearest unvisited chord tone (50% bias), else any.
+		bool used[7] = {};
+		ordered[0] = baseTones[0]; used[0] = true;
+		for (int i = 1; i < baseCount; i++) {
+			track.randState = track.randState * 1664525u + 1013904223u;
+			int bestIdx = -1;
+			if ((track.randState >> 31) == 0u) { // 50%: nearest unvisited
+				int bestDist = 9999;
+				for (int j = 0; j < baseCount; j++) {
+					if (used[j]) continue;
+					int d = (int)baseTones[j] - (int)ordered[i - 1]; if (d < 0) d = -d;
+					if (d < bestDist) { bestDist = d; bestIdx = j; }
+				}
+			}
+			if (bestIdx < 0) { // random unvisited
+				int pool[7]; int pc = 0;
+				for (int j = 0; j < baseCount; j++) if (!used[j]) pool[pc++] = j;
+				track.randState = track.randState * 1664525u + 1013904223u;
+				bestIdx = pool[(track.randState >> 16) % (uint32_t)pc];
+			}
+			used[bestIdx] = true; ordered[i] = baseTones[bestIdx];
+		}
+		break;
+	}
+	case ChordArpMode::WeightedRandom: {
+		// Root has 2× weight: build a pool with root doubled then pick with replacement.
+		int8_t pool[8]; int poolSize = 0;
+		pool[poolSize++] = baseTones[0]; // root extra weight
+		for (int i = 0; i < baseCount && poolSize < 8; i++) pool[poolSize++] = baseTones[i];
+		for (int i = 0; i < baseCount; i++) {
+			track.randState = track.randState * 1664525u + 1013904223u;
+			ordered[i] = pool[(track.randState >> 16) % (uint32_t)poolSize];
+		}
+		break;
+	}
+	case ChordArpMode::FullRandom:
+		for (int i = 0; i < baseCount; i++) {
+			track.randState = track.randState * 1664525u + 1013904223u;
+			ordered[i] = baseTones[(track.randState >> 16) % (uint32_t)baseCount];
+		}
+		break;
+	}
+
+	// Variation: re-shuffle the ordered sequence each step with rising probability.
+	if (track.chordVariation > 0) {
+		track.randState = track.randState * 1664525u + 1013904223u;
+		if (((track.randState >> 16) % 4u) < (uint32_t)track.chordVariation) {
+			for (int i = orderedCount - 1; i > 0; i--) {
+				track.randState = track.randState * 1664525u + 1013904223u;
+				const int j = (int)((track.randState >> 16) % (uint32_t)(i + 1));
+				const int8_t tmp = ordered[i]; ordered[i] = ordered[j]; ordered[j] = tmp;
+			}
+		}
+	}
+
+	// Insert diatonic passing tones between chord-tone pairs.
+	int8_t final_seq[16]; int finalCount = 0;
+	for (int i = 0; i < orderedCount && finalCount < 15; i++) {
+		final_seq[finalCount++] = ordered[i];
+		if (i < orderedCount - 1 && track.chordPassingTonePct > 0 && finalCount < 15) {
+			track.randState = track.randState * 1664525u + 1013904223u;
+			if (((track.randState >> 16) % 100u) < (uint32_t)track.chordPassingTonePct) {
+				const int mid = ((int)ordered[i] + (int)ordered[i + 1]) / 2;
+				const int pt  = NearestScaleNote(mid, track.key, track.scale);
+				if (pt != (int)ordered[i] && pt != (int)ordered[i + 1])
+					final_seq[finalCount++] = (int8_t)pt;
+			}
+		}
+	}
+
+	for (int i = 0; i < finalCount; i++) track.chordToneSeq[i] = final_seq[i];
+	track.chordSubTotal    = (uint8_t)finalCount;
+	track.chordSubStep     = 0;
+	track.chordPingPongDir = true;
+
+	(void)samplesPerStep; // reserved for future sub-step duration clamping
 }
 
 // Chromatic degree table (one semitone per degree) — used by the Markov

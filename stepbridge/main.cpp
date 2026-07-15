@@ -200,6 +200,9 @@ private:
     // ── MIDI gate tracking ────────────────────────────────────────────────────
     bool    lastGateOpen_[MAX_TRACKS]  = {};
     uint8_t soundingNote_[MAX_TRACKS]  = {}; // note sent on note-on, used for paired note-off
+    // Simultaneous chord mode: track all sounding notes for correct note-off
+    int8_t  chordSoundingNotes_[MAX_TRACKS][8] = {};
+    uint8_t chordSoundingCount_[MAX_TRACKS]    = {};
 
     // ── Glide (portamento) state — CV tracks 0 and 1 only ────────────────────
     // Interpolation in millivolts Q8 (value * 256). V/oct: 1 semitone = 1000/12 mV.
@@ -520,17 +523,40 @@ private:
             const bool gateWas = lastGateOpen_[i];
             if (gateNow && !gateWas) {
                 if (track.midiEnabled) {
-                    const int8_t sn = track.steps[track.currentStep].note;
-                    if (sn != WIRE_REST) {
-                        const int cs = track.currentStep;
-                        int effNote = (int)sn + (int)track.mutNoteDelta[cs];
-                        if (track.mutScaleConstrain && track.scale != Scale::Chromatic)
-                            effNote = NearestScaleNote(effNote, track.key, track.scale);
-                        const uint8_t n = (uint8_t)std::max(0, std::min(127, effNote + (int)track.shift));
-                        const uint8_t v = track.steps[track.currentStep].accent ? 127u : 96u;
+                    const uint8_t v = track.steps[track.currentStep].accent ? 127u : 96u;
+                    if (track.chordArpMode == ChordArpMode::Simultaneous
+                        && track.chordSubTotal >= 2) {
+                        // Fire all chord tones simultaneously (MIDI tracks).
+                        const uint8_t cnt = std::min(track.chordSubTotal, (uint8_t)8u);
+                        chordSoundingCount_[i] = cnt;
+                        for (uint8_t ci = 0; ci < cnt; ci++) {
+                            const uint8_t n = (uint8_t)std::max(0, std::min(127,
+                                (int)track.chordToneSeq[ci] + (int)track.shift));
+                            chordSoundingNotes_[i][ci] = (int8_t)n;
+                            PushMidiNote(0x01, (uint8_t)i, n, v);
+                        }
+                        if (i < 2) ++gNotesOn[i];
+                    } else if (track.chordSubTotal >= 2) {
+                        // Arp mode: sub-step tone.
+                        const uint8_t sub = std::min(track.chordSubStep, (uint8_t)(track.chordSubTotal - 1u));
+                        const uint8_t n = (uint8_t)std::max(0, std::min(127,
+                            (int)track.chordToneSeq[sub] + (int)track.shift));
                         soundingNote_[i] = n;
                         PushMidiNote(0x01, (uint8_t)i, n, v);
                         if (i < 2) ++gNotesOn[i];
+                    } else {
+                        // Mono.
+                        const int8_t sn = track.steps[track.currentStep].note;
+                        if (sn != WIRE_REST) {
+                            const int cs = track.currentStep;
+                            int effNote = (int)sn + (int)track.mutNoteDelta[cs];
+                            if (track.mutScaleConstrain && track.scale != Scale::Chromatic)
+                                effNote = NearestScaleNote(effNote, track.key, track.scale);
+                            const uint8_t n = (uint8_t)std::max(0, std::min(127, effNote + (int)track.shift));
+                            soundingNote_[i] = n;
+                            PushMidiNote(0x01, (uint8_t)i, n, v);
+                            if (i < 2) ++gNotesOn[i];
+                        }
                     }
                 }
                 // Start accent spike for CV tracks (Spike and Hybrid modes).
@@ -538,7 +564,14 @@ private:
                     accentSpikeLeft_[i] = kSpikeLen;
             } else if (!gateNow && gateWas) {
                 if (track.midiEnabled) {
-                    PushMidiNote(0x02, (uint8_t)i, soundingNote_[i], 0);
+                    if (track.chordArpMode == ChordArpMode::Simultaneous
+                        && chordSoundingCount_[i] > 0) {
+                        for (uint8_t ci = 0; ci < chordSoundingCount_[i]; ci++)
+                            PushMidiNote(0x02, (uint8_t)i, (uint8_t)chordSoundingNotes_[i][ci], 0);
+                        chordSoundingCount_[i] = 0;
+                    } else {
+                        PushMidiNote(0x02, (uint8_t)i, soundingNote_[i], 0);
+                    }
                     if (i < 2) ++gNotesOff[i];
                 }
                 if (i < NUM_CV_TRACKS) accentSpikeLeft_[i] = 0;
@@ -574,18 +607,25 @@ private:
             const int8_t rawNote = t.steps[t.currentStep].note;
             if (rawNote == WIRE_REST) continue; // hold last CV, freeze glide
 
-            const int cs = t.currentStep;
-            // Recompute the scale-constrained note only when the step changes.
-            // NearestScaleNote reads .rodata arrays from flash; calling it at 48 kHz
-            // causes XIP cache pressure that overloads the core1 ISR.
-            if (cs != portaCachedStep_[i]) {
-                portaCachedStep_[i] = cs;
-                int en = (int)rawNote + (int)t.mutNoteDelta[cs];
-                if (t.mutScaleConstrain && t.scale != Scale::Chromatic)
-                    en = NearestScaleNote(en, t.key, t.scale);
-                portaCachedConstrained_[i] = (int8_t)std::max(0, std::min(126, en));
+            int effNote;
+            // Chord arp CV: use current sub-step tone (pre-computed, no flash reads at sample rate).
+            if (t.chordSubTotal >= 2 && t.chordArpMode != ChordArpMode::Simultaneous) {
+                const uint8_t sub = std::min(t.chordSubStep, (uint8_t)(t.chordSubTotal - 1u));
+                effNote = std::max(0, std::min(126, (int)t.chordToneSeq[sub] + (int)t.shift));
+            } else {
+                const int cs = t.currentStep;
+                // Recompute the scale-constrained note only when the step changes.
+                // NearestScaleNote reads .rodata arrays from flash; calling it at 48 kHz
+                // causes XIP cache pressure that overloads the core1 ISR.
+                if (cs != portaCachedStep_[i]) {
+                    portaCachedStep_[i] = cs;
+                    int en = (int)rawNote + (int)t.mutNoteDelta[cs];
+                    if (t.mutScaleConstrain && t.scale != Scale::Chromatic)
+                        en = NearestScaleNote(en, t.key, t.scale);
+                    portaCachedConstrained_[i] = (int8_t)std::max(0, std::min(126, en));
+                }
+                effNote = std::max(0, std::min(126, (int)portaCachedConstrained_[i] + (int)t.shift));
             }
-            const int effNote = std::max(0, std::min(126, (int)portaCachedConstrained_[i] + (int)t.shift));
             const int32_t targetMvQ8 = (int32_t)(effNote - 60) * kMvPerSemiQ8;
             portaTargetMvQ8_[i] = targetMvQ8; // always live-update (handles shift changes)
 
@@ -747,7 +787,7 @@ static void CdcNack(uint8_t cmd, uint8_t reason = sbproto::NACK_BAD_ARG)
 
 static void CdcSendState()
 {
-    static uint8_t buf[768];
+    static uint8_t buf[1536]; // 4 tracks × (27 header + 64×3 steps) ≈ 880 bytes; 1536 gives headroom
     uint32_t n = 0;
     auto put = [&](uint8_t b) { if (n < sizeof(buf)) buf[n++] = b; };
 
@@ -777,6 +817,10 @@ static void CdcSendState()
         put(t.mutRateIdx);
         put(t.mutDepthIdx);
         put(t.mutScaleConstrain);
+        put(t.chordTemplate);
+        put((uint8_t)t.chordArpMode);
+        put(t.chordVariation);
+        put(t.chordPassingTonePct);
         for (uint8_t si = 0; si < t.length; si++) {
             const Step &s = t.steps[si];
             put((uint8_t)(int8_t)s.note);
@@ -1201,6 +1245,21 @@ static void CdcHandleFrame(uint8_t cmd, const uint8_t *pay, uint16_t paylen)
         RequestAudioPause();
         LatchMutation(gPattern.tracks[ti]);
         ReleaseAudioPause();
+        gPatternDirty = true;
+        CdcAck(cmd);
+        CdcSendState();
+        break;
+    }
+
+    case CMD_SET_CHORD: {
+        if (paylen < 5) { CdcNack(cmd, NACK_BAD_LEN); break; }
+        const uint8_t ti = pay[0];
+        if (ti >= gPattern.numTracks) { CdcNack(cmd, NACK_BAD_TRACK); break; }
+        Track &t = gPattern.tracks[ti];
+        t.chordTemplate       = pay[1];
+        t.chordArpMode        = (ChordArpMode)std::min(pay[2], (uint8_t)(kChordArpModeCount - 1u));
+        t.chordVariation      = std::min(pay[3], (uint8_t)3u);
+        t.chordPassingTonePct = std::min(pay[4], (uint8_t)100u);
         gPatternDirty = true;
         CdcAck(cmd);
         CdcSendState();

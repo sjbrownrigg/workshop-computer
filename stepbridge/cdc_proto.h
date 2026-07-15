@@ -46,6 +46,7 @@ constexpr uint8_t CMD_SET_TIMESIG_REGULAR   = 0x2B; // [track, timeSigNum:u8(1-3
 constexpr uint8_t CMD_SET_TIMESIG_IRREGULAR = 0x2C; // [track, count:u8(1-8), groups...] → RSP_ACK  (sets irregular groups, timeSigMode=Irregular)
 constexpr uint8_t CMD_SET_MUTATION          = 0x2D; // [track, enabled:u8, rateIdx:u8(0-7), depthIdx:u8(0-7), scaleConstrain:u8(0/1)] → RSP_ACK + RSP_STATE
 constexpr uint8_t CMD_MUTATION_LATCH        = 0x2E; // [track] → RSP_ACK + RSP_STATE  (writes overlay deltas into stored steps, clears deltas)
+constexpr uint8_t CMD_SET_CHORD             = 0x2F; // [track, template:u8, arpMode:u8, variation:u8, passingTonePct:u8] → RSP_ACK + RSP_STATE
 
 // ── Firmware semantic version ─────────────────────────────────────────────────
 // Bump MINOR on any wire-format change (new opcodes, RSP_STATE layout changes).

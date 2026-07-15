@@ -4,17 +4,17 @@
 
 namespace stepbridge {
 
-constexpr uint32_t kFlashMagic   = 0x53425441u; // 'SBTA' (bumped when lastSavedSlot + 8-slot layout added)
+constexpr uint32_t kFlashMagic   = 0x53425442u; // 'SBTB' (bumped for Section C chord arp fields)
 constexpr int      kNumSaveSlots = 8;
 
 // ── Persistent layout ─────────────────────────────────────────────────────────
 // Two flash sectors (8192 bytes) at the end of flash.
 // With MAX_PLAYABLE_TRACKS=4, MAX_STEPS=64, kNumSaveSlots=8:
 //   sizeof(StoredStep)  = 3
-//   sizeof(StoredTrack) = 21 + 64×3 = 213
-//   sizeof(StoredSlot)  = 8 + 4×213 = 860
-//   sizeof(FlashData)   = 8 + 8×860 = 6888 → rounds to 6912 bytes programmed
-// 6888 < 8192: fits with 1304 bytes to spare.
+//   sizeof(StoredTrack) = 25 + 64×3 = 217  (21 original + 4 chord fields)
+//   sizeof(StoredSlot)  = 8 + 4×217 = 876
+//   sizeof(FlashData)   = 8 + 8×876 = 7016 → rounds to 7168 bytes programmed
+// 7016 < 8192: fits with 1024 bytes to spare.
 
 struct StoredStep {
     int8_t  note;
@@ -36,6 +36,10 @@ struct StoredTrack {
     uint8_t  timeSigMode;    // 0=Regular 1=Irregular
     uint8_t  irregularGroupCount;
     uint8_t  irregularGroups[MAX_IRREGULAR_GROUPS];
+    uint8_t  chordTemplate;
+    uint8_t  chordArpMode;
+    uint8_t  chordVariation;
+    uint8_t  chordPassingTonePct;
     StoredStep steps[MAX_STEPS];
 };
 

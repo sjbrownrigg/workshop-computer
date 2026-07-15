@@ -30,6 +30,14 @@ enum class ClockSource : uint8_t { Internal, ExternalPulse, MidiClock };
 enum class ArpMode : uint8_t { Off=0, Forward=1, Reverse=2, PingPong=3, Random=4, Converge=5, Diverge=6 };
 constexpr uint8_t kArpModeCount = 7;
 
+// Chord arp: how to sequence chord tones within a single step's time slot.
+// Simultaneous fires all tones at once (MIDI only; CV falls back to ascending).
+enum class ChordArpMode : uint8_t {
+    Ascending=0, Descending=1, PingPong=2,
+    MelodicRandom=3, WeightedRandom=4, FullRandom=5, Simultaneous=6
+};
+constexpr uint8_t kChordArpModeCount = 7;
+
 struct Step
 {
     int8_t  note        = 60;   // 0-126, or WIRE_REST
@@ -62,6 +70,12 @@ struct Track
     bool    muted       = false;
     bool    solo        = false;
 
+    // Chord arp — persisted settings:
+    uint8_t      chordTemplate      = 0;                        // bitmask bits0-6 = scale degrees 1-7; 0 = off
+    ChordArpMode chordArpMode       = ChordArpMode::Ascending;  // how to sequence tones within each step
+    uint8_t      chordVariation     = 0;                        // 0=locked; 1-3 = increasing re-shuffle probability each step
+    uint8_t      chordPassingTonePct = 0;                       // 0-100% chance of inserting a diatonic passing tone between each pair
+
     // Mutation (Stockhausen-style continuous drift) — settings persisted via flash,
     // deltas are transient overlay state (reset on load or when mutation is disabled):
     uint8_t mutEnabled        = 0; // 0=off, 1=on
@@ -81,6 +95,11 @@ struct Track
     uint8_t  arpStepOrder[MAX_STEPS] = {}; // Converge/Diverge: pre-computed step index permutation
     uint8_t  arpNumSteps      = 0;     // number of non-rest steps in arpStepOrder
     uint8_t  arpPosition      = 0;     // current index into arpStepOrder
+    // Chord arp runtime state — rebuilt at each step start by BuildChordSequence:
+    uint8_t  chordSubTotal    = 0;     // sub-pulses this step (0=off/simultaneous, 2+=arp)
+    uint8_t  chordSubStep     = 0;     // current sub-pulse index into chordToneSeq
+    int8_t   chordToneSeq[16] = {};    // sequence of notes for this step (includes passing tones)
+    bool     chordPingPongDir = true;  // ping-pong direction within chord sequence
 };
 
 struct Pattern
@@ -136,6 +155,11 @@ int NearestScaleNote(int note, uint8_t key, Scale scale);
 // Rebuilds arpStepOrder for Converge/Diverge modes. No-op for other modes.
 // Call from core0 after any note or length change when arpMode is Converge/Diverge.
 void RebuildArpOrder(Track &track);
+
+// Builds chordToneSeq and chordSubTotal for the current step. Called from
+// AdvanceTrackSample on each step advance when chordTemplate != 0.
+// Safe to call at step-rate from core1 (uses NearestScaleNote, not sample-rate).
+void BuildChordSequence(Track &track, uint32_t samplesPerStep);
 
 // Markov pitch style for RandomizeTrack / RandomizeAllTracks.
 enum class RandomizeStyle : uint8_t {
