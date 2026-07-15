@@ -906,6 +906,7 @@ function showTab(name){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.querySelector('.tab-btn[data-tab="'+name+'"]').classList.add('active');
+  localStorage.setItem('sbMainTab',name);
 }
 
 // ── WebSerial state ───────────────────────────────────────────────────────────
@@ -2014,11 +2015,11 @@ function buildTrackBlock(ti){
 
   // Mutation (Stockhausen continuous drift) controls
   const mutCtrl=document.createElement('div'); mutCtrl.className='ctrl-small';
-  mutCtrl.style.borderTop='1px solid var(--border)'; mutCtrl.style.paddingTop='6px'; mutCtrl.style.marginTop='4px';
+  mutCtrl.style.borderLeft='2px solid var(--border)'; mutCtrl.style.paddingLeft='10px'; mutCtrl.style.marginLeft='8px';
 
   const mutEnableChk=document.createElement('input'); mutEnableChk.type='checkbox';
   mutEnableChk.checked=t.mutEnabled||false;
-  mutEnableChk.style.margin='0 4px 0 0';
+  mutEnableChk.style.margin='0 4px 0 0'; mutEnableChk.style.verticalAlign='middle';
   const mutEnableLbl=mk('label','font-weight:600','Mutation');
   mutEnableLbl.style.cursor='pointer';
   mutEnableLbl.title='Stockhausen-style continuous drift: note pitches gradually wander over time. Overlay mode — stored pattern is unchanged until you Latch.';
@@ -2103,6 +2104,7 @@ function buildTrackBlock(ti){
     if(trackFooterTab[ti]===group.id)btn.classList.add('active');
     btn.onclick=()=>{
       trackFooterTab[ti]=group.id;
+      localStorage.setItem('sbFooterTabs',JSON.stringify(trackFooterTab));
       tabStrip.querySelectorAll('.footer-tab-btn').forEach(b=>b.classList.remove('active'));
       tabPanels.querySelectorAll('.footer-panel').forEach(p=>p.classList.remove('active'));
       btn.classList.add('active');
@@ -2601,10 +2603,15 @@ async function detectMIDI(){
   }catch(e){status.textContent='MIDI access denied: '+e.message;status.className='status err';}
 }
 
-// ── Theme toggle ─────────────────────────────────────────────────────────────
+// ── Theme + tab state restore ─────────────────────────────────────────────────
 (function(){
   const stored=localStorage.getItem('sbTheme');
   if(stored)document.documentElement.setAttribute('data-theme',stored);
+  const mainTab=localStorage.getItem('sbMainTab');
+  if(mainTab&&document.getElementById('tab-'+mainTab))showTab(mainTab);
+  try{const ft=JSON.parse(localStorage.getItem('sbFooterTabs')||'{}');
+    Object.keys(ft).forEach(k=>{trackFooterTab[parseInt(k)]=ft[k];});
+  }catch(e){}
 })();
 function cycleTheme(){
   const cur=document.documentElement.getAttribute('data-theme');
