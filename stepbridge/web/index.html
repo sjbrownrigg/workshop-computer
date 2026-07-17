@@ -953,6 +953,7 @@ const trackUndoAvailable={}; // ti -> bool; true after Randomize, false after Un
 const latchedUnsaved=new Set(); // tracks latched but not yet saved to flash
 const _lenSendTimer={};
 const _shiftSendTimer={};
+const _chordSendTimer={};
 let ribbonDragging=false; // true while any ribbon has pointer capture — blocks mid-drag renderEditor()
 let pointerIsDown=false;  // true from pointerdown until pointerup/cancel anywhere on page
 let deferredRender=false; // RSP_STATE arrived while user was interacting — re-render when free
@@ -2178,12 +2179,15 @@ function buildTrackBlock(ti){
       btn.classList.toggle('active',parseInt(btn.dataset.val)===ct));
   };
   const sendChord=()=>{
-    const ct=pattern.tracks[ti].chordTemplate||0;
-    const am=pattern.tracks[ti].chordArpMode||0;
-    const cv=pattern.tracks[ti].chordVariation||0;
-    const cp=pattern.tracks[ti].chordPassingTonePct||0;
-    sendSetChord(ti,ct,am,cv,cp);
     syncChordUI();
+    clearTimeout(_chordSendTimer[ti]);
+    _chordSendTimer[ti]=setTimeout(()=>{
+      const ct=pattern.tracks[ti].chordTemplate||0;
+      const am=pattern.tracks[ti].chordArpMode||0;
+      const cv=pattern.tracks[ti].chordVariation||0;
+      const cp=pattern.tracks[ti].chordPassingTonePct||0;
+      sendSetChord(ti,ct,am,cv,cp);
+    },150);
     for(let si=0;si<pattern.tracks[ti].length;si++){
       const cell=document.getElementById('cell-'+ti+'-'+si);
       if(cell){
