@@ -2125,21 +2125,26 @@ function buildTrackBlock(ti){
     {label:'1·4·5',  val:0x19, title:'Sus4 (root, 4th, 5th)'},
     {label:'1·5',    val:0x11, title:'Power chord (root, 5th)'},
   ];
-  const chordCtrl=document.createElement('div');
-  chordCtrl.style.cssText='display:flex;flex-direction:column;gap:4px;width:100%;';
-  const chordTemplateLbl=mk('label','font-family:var(--mono);font-size:11px;font-weight:600;color:var(--fg)','Chord');
-  chordTemplateLbl.title='Select which scale degrees to include in the arp. Bit 0=root, bit 1=2nd degree, bit 2=3rd, …';
 
-  const chordPresetRow=document.createElement('div');
-  chordPresetRow.style.cssText='display:flex;flex-wrap:wrap;gap:3px;';
-  const chordDegRow=document.createElement('div');
-  chordDegRow.style.cssText='display:flex;gap:3px;';
+  // Three separate nodes so the footer's flex-wrap places them naturally:
+  //  Row 1: chordPresetsCtrl + chordDegsCtrl  (float side-by-side)
+  //  Row 2: chordModeCtrl   (flex-basis:100% forces new line)
+  //  Row 3: chordNoteEl     (flex-basis:100% forces new line)
+  const chordPresetsCtrl=document.createElement('div');
+  chordPresetsCtrl.style.cssText='display:flex;align-items:center;gap:3px;';
+  const chordDegsCtrl=document.createElement('div');
+  chordDegsCtrl.style.cssText='display:flex;align-items:center;gap:3px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px;';
+  const chordModeCtrl=document.createElement('div');
+  chordModeCtrl.style.cssText='flex-basis:100%;display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const chordNoteEl=mk('div','flex-basis:100%;font-size:9px;color:var(--dim)',
+    'Simultaneous fires all tones at once on MIDI tracks. CV tracks always arpeggiate sub-steps.');
+
   const chordDegBtns=[];
 
   const syncChordUI=()=>{
     const ct=pattern.tracks[ti].chordTemplate||0;
     chordDegBtns.forEach((btn,b)=>btn.classList.toggle('active',(ct>>b)&1));
-    chordPresetRow.querySelectorAll('.chord-preset-btn').forEach(btn=>
+    chordPresetsCtrl.querySelectorAll('.chord-preset-btn').forEach(btn=>
       btn.classList.toggle('active',parseInt(btn.dataset.val)===ct));
   };
   const sendChord=()=>{
@@ -2149,7 +2154,6 @@ function buildTrackBlock(ti){
     const cp=pattern.tracks[ti].chordPassingTonePct||0;
     sendSetChord(ti,ct,am,cv,cp);
     syncChordUI();
-    // refresh chord glyph on all cells
     for(let si=0;si<pattern.tracks[ti].length;si++){
       const cell=document.getElementById('cell-'+ti+'-'+si);
       if(cell){
@@ -2160,13 +2164,16 @@ function buildTrackBlock(ti){
     }
   };
 
+  const chordLbl=mk('label','font-family:var(--mono);font-size:11px;color:var(--dim);margin-right:2px','Chord');
+  chordLbl.title='Select which scale degrees to include. Bit 0=root, bit 2=3rd, bit 4=5th, …';
+  chordPresetsCtrl.appendChild(chordLbl);
   CHORD_PRESETS.forEach(p=>{
     const btn=document.createElement('button');
     btn.className='chord-preset-btn'+(t.chordTemplate===p.val?' active':'');
     btn.dataset.val=String(p.val);
     btn.textContent=p.label; btn.title=p.title;
     btn.onclick=()=>{ pattern.tracks[ti].chordTemplate=p.val; sendChord(); };
-    chordPresetRow.appendChild(btn);
+    chordPresetsCtrl.appendChild(btn);
   });
 
   const DEG_LABELS=['R','2','3','4','5','6','7'];
@@ -2177,7 +2184,7 @@ function buildTrackBlock(ti){
     btn.title='Scale degree '+(b===0?'(root)':'('+(b+1)+'th)');
     btn.onclick=()=>{ pattern.tracks[ti].chordTemplate^=(1<<b); sendChord(); };
     chordDegBtns.push(btn);
-    chordDegRow.appendChild(btn);
+    chordDegsCtrl.appendChild(btn);
   });
 
   const chordModeLbl=mk('label','font-size:10px;color:var(--dim)','Mode');
@@ -2189,34 +2196,28 @@ function buildTrackBlock(ti){
   chordModeSel.value=t.chordArpMode||0;
   chordModeSel.onchange=()=>{ pattern.tracks[ti].chordArpMode=parseInt(chordModeSel.value); sendChord(); };
 
-  const chordVarLbl=mk('label','font-size:10px;color:var(--dim);margin-left:10px','Var');
+  const chordVarLbl=mk('label','font-size:10px;color:var(--dim)','Var');
   chordVarLbl.title='Variation: 0=deterministic sequence, 1–3=increasing randomness applied per step';
   const chordVarIn=document.createElement('input');
   chordVarIn.type='range'; chordVarIn.min=0; chordVarIn.max=3; chordVarIn.step=1;
   chordVarIn.value=t.chordVariation||0;
-  chordVarIn.style.cssText='width:56px;vertical-align:middle;margin:0 4px';
+  chordVarIn.style.cssText='width:56px;vertical-align:middle;';
   const kVarLabels=['None','Low','Med','High'];
   const chordVarVal=mk('span','font-size:10px;color:var(--dim)',kVarLabels[t.chordVariation||0]);
   chordVarIn.oninput=()=>{chordVarVal.textContent=kVarLabels[parseInt(chordVarIn.value)];};
   chordVarIn.onchange=()=>{ pattern.tracks[ti].chordVariation=parseInt(chordVarIn.value); sendChord(); };
 
-  const chordPTLbl=mk('label','font-size:10px;color:var(--dim);margin-left:10px','Pass%');
+  const chordPTLbl=mk('label','font-size:10px;color:var(--dim)','Pass%');
   chordPTLbl.title='Probability (%) of inserting a chromatic passing tone between adjacent arp tones';
   const chordPTIn=document.createElement('input');
   chordPTIn.type='range'; chordPTIn.min=0; chordPTIn.max=100; chordPTIn.step=5;
   chordPTIn.value=t.chordPassingTonePct||0;
-  chordPTIn.style.cssText='width:70px;vertical-align:middle;margin:0 4px';
+  chordPTIn.style.cssText='width:70px;vertical-align:middle;';
   const chordPTVal=mk('span','font-family:var(--mono);font-size:10px',(t.chordPassingTonePct||0)+'%');
   chordPTIn.oninput=()=>{chordPTVal.textContent=chordPTIn.value+'%';};
   chordPTIn.onchange=()=>{ pattern.tracks[ti].chordPassingTonePct=parseInt(chordPTIn.value); sendChord(); };
 
-  const chordModeRow=document.createElement('div');
-  chordModeRow.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:4px;';
-  chordModeRow.append(chordModeLbl,chordModeSel,chordVarLbl,chordVarIn,chordVarVal,chordPTLbl,chordPTIn,chordPTVal);
-
-  const chordNote=mk('div','font-size:9px;color:var(--dim)',
-    'Simultaneous fires all tones at once on MIDI tracks. CV tracks always arpeggiate sub-steps.');
-  chordCtrl.append(chordTemplateLbl,chordPresetRow,chordDegRow,chordModeRow,chordNote);
+  chordModeCtrl.append(chordModeLbl,chordModeSel,chordVarLbl,chordVarIn,chordVarVal,chordPTLbl,chordPTIn,chordPTVal);
 
   // Tabbed footer — Timing | Playback | Generative | Chord | Pitch | MIDI | Output
   const outputNodes=[glideCtrl];
@@ -2225,7 +2226,7 @@ function buildTrackBlock(ti){
     {id:'timing',    label:'Timing',     nodes:[lenCtrl,barCtrl]},
     {id:'playback',  label:'Playback',   nodes:[arpCtrl]},
     {id:'generative',label:'Generative', nodes:[randCtrl,mutCtrl]},
-    {id:'chord',     label:'Chord',      nodes:[chordCtrl]},
+    {id:'chord',     label:'Chord',      nodes:[chordPresetsCtrl,chordDegsCtrl,chordModeCtrl,chordNoteEl]},
     {id:'pitch',     label:'Pitch',      nodes:[shiftCtrl,transpCtrl,scaleCtrl]},
     {id:'midi',      label:'MIDI',       nodes:[chCtrl]},
     {id:'output',    label:'Output',     nodes:outputNodes},
