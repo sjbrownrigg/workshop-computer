@@ -2125,14 +2125,15 @@ function buildTrackBlock(ti){
     {label:'1·4·5',  val:0x19, title:'Sus4 (root, 4th, 5th)'},
     {label:'1·5',    val:0x11, title:'Power chord (root, 5th)'},
   ];
-  const chordCtrl=document.createElement('div'); chordCtrl.className='ctrl-small';
-  const chordTemplateLbl=mk('label','font-weight:600','Chord');
+  const chordCtrl=document.createElement('div');
+  chordCtrl.style.cssText='display:flex;flex-direction:column;gap:3px;';
+  const chordTemplateLbl=mk('label','font-family:var(--mono);font-size:11px;font-weight:600;color:var(--fg)','Chord');
   chordTemplateLbl.title='Select which scale degrees to include in the arp. Bit 0=root, bit 1=2nd degree, bit 2=3rd, …';
 
   const chordPresetRow=document.createElement('div');
-  chordPresetRow.style.cssText='display:flex;flex-wrap:wrap;gap:3px;margin:3px 0 2px;';
+  chordPresetRow.style.cssText='display:flex;flex-wrap:wrap;gap:3px;';
   const chordDegRow=document.createElement('div');
-  chordDegRow.style.cssText='display:flex;gap:3px;margin:2px 0;';
+  chordDegRow.style.cssText='display:flex;gap:3px;';
   const chordDegBtns=[];
 
   const syncChordUI=()=>{
@@ -2210,10 +2211,10 @@ function buildTrackBlock(ti){
   chordPTIn.onchange=()=>{ pattern.tracks[ti].chordPassingTonePct=parseInt(chordPTIn.value); sendChord(); };
 
   const chordModeRow=document.createElement('div');
-  chordModeRow.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:4px;';
+  chordModeRow.style.cssText='display:flex;align-items:center;flex-wrap:wrap;gap:4px;';
   chordModeRow.append(chordModeLbl,chordModeSel,chordVarLbl,chordVarIn,chordVarVal,chordPTLbl,chordPTIn,chordPTVal);
 
-  const chordNote=mk('div','font-size:9px;color:var(--dim);margin-top:4px',
+  const chordNote=mk('div','font-size:9px;color:var(--dim)',
     'Simultaneous fires all tones at once on MIDI tracks. CV tracks always arpeggiate sub-steps.');
   chordCtrl.append(chordTemplateLbl,chordPresetRow,chordDegRow,chordModeRow,chordNote);
 
