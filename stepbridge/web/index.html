@@ -89,10 +89,13 @@
   /* ── Transport + slots toolbar ── */
   .toolbars{display:flex;flex-direction:column;gap:0;padding-bottom:10px;
     border-bottom:1px solid var(--border);margin-bottom:14px;}
-  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;}
+  .toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;}
   .toolbar-discover{border-top:1px solid var(--border);}
   .toolbar-discover .toolbar-label{color:var(--teal);}
-  .toolbar-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+  .toolbar-sep{display:none;}
+  .toolbar-chip{display:flex;align-items:center;gap:5px;
+    background:color-mix(in srgb,var(--surface) 70%,var(--bg));
+    border:1px solid var(--border);border-radius:4px;padding:3px 8px;}
   .toolbar-label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;
     text-transform:uppercase;color:var(--dim);}
   .transport-btn{font-family:var(--mono);font-size:12px;padding:4px 10px;
@@ -133,7 +136,9 @@
   /* ── Editor header (tempo / clock / status) ── */
   .editor-header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;}
   .editor-header label{font-family:var(--mono);font-size:11px;color:var(--dim);}
-  .ctrl-group{display:flex;align-items:center;gap:6px;}
+  .ctrl-group{display:flex;align-items:center;gap:6px;
+    background:color-mix(in srgb,var(--surface) 70%,var(--bg));
+    border:1px solid var(--border);border-radius:4px;padding:3px 8px;}
   select{font-family:var(--mono);font-size:12px;background:var(--bg);
     border:1px solid var(--border);border-radius:4px;color:var(--text);
     padding:4px 6px;cursor:pointer;outline:none;}
@@ -426,46 +431,53 @@
 
       <!-- Row 1: Transport · Slots · Tracks -->
       <div class="toolbar">
-        <span class="toolbar-label">Transport</span>
-        <button class="transport-btn active" id="btnPlay" disabled onclick="setTransport(0)">▶ Play</button>
-        <button class="transport-btn" id="btnStop" disabled onclick="setTransport(1)">■ Stop</button>
-        <button class="transport-btn" id="btnFromStart" disabled onclick="setTransport(2)">▶ from start</button>
-        <div class="toolbar-sep"></div>
-        <span class="toolbar-label">Slots</span>
-        <button class="slot-btn" id="slot-0" disabled onclick="slotClick(0,event)" title="Shift+click to save">1</button>
-        <button class="slot-btn" id="slot-1" disabled onclick="slotClick(1,event)" title="Shift+click to save">2</button>
-        <button class="slot-btn" id="slot-2" disabled onclick="slotClick(2,event)" title="Shift+click to save">3</button>
-        <button class="slot-btn" id="slot-3" disabled onclick="slotClick(3,event)" title="Shift+click to save">4</button>
-        <button class="slot-btn" id="slot-4" disabled onclick="slotClick(4,event)" title="Shift+click to save">5</button>
-        <button class="slot-btn" id="slot-5" disabled onclick="slotClick(5,event)" title="Shift+click to save">6</button>
-        <button class="slot-btn" id="slot-6" disabled onclick="slotClick(6,event)" title="Shift+click to save">7</button>
-        <button class="slot-btn" id="slot-7" disabled onclick="slotClick(7,event)" title="Shift+click to save">8</button>
-        <span class="slot-hint">shift+click=save</span>
-        <span class="slot-status" id="slotStatus"></span>
-        <div class="toolbar-sep"></div>
-        <span class="toolbar-label">Tracks</span>
-        <button class="global-mute-btn" id="btnGlobalMute" disabled onclick="toggleGlobalMute()">⊘ Mute All</button>
-        <button class="add-track-btn"   id="btnAddTrack"   disabled onclick="addTrack()">+ Add Track</button>
+        <div class="toolbar-chip">
+          <span class="toolbar-label">Transport</span>
+          <button class="transport-btn active" id="btnPlay" disabled onclick="setTransport(0)">▶ Play</button>
+          <button class="transport-btn" id="btnStop" disabled onclick="setTransport(1)">■ Stop</button>
+          <button class="transport-btn" id="btnFromStart" disabled onclick="setTransport(2)">▶ from start</button>
+        </div>
+        <div class="toolbar-chip">
+          <span class="toolbar-label">Slots</span>
+          <button class="slot-btn" id="slot-0" disabled onclick="slotClick(0,event)" title="Shift+click to save">1</button>
+          <button class="slot-btn" id="slot-1" disabled onclick="slotClick(1,event)" title="Shift+click to save">2</button>
+          <button class="slot-btn" id="slot-2" disabled onclick="slotClick(2,event)" title="Shift+click to save">3</button>
+          <button class="slot-btn" id="slot-3" disabled onclick="slotClick(3,event)" title="Shift+click to save">4</button>
+          <button class="slot-btn" id="slot-4" disabled onclick="slotClick(4,event)" title="Shift+click to save">5</button>
+          <button class="slot-btn" id="slot-5" disabled onclick="slotClick(5,event)" title="Shift+click to save">6</button>
+          <button class="slot-btn" id="slot-6" disabled onclick="slotClick(6,event)" title="Shift+click to save">7</button>
+          <button class="slot-btn" id="slot-7" disabled onclick="slotClick(7,event)" title="Shift+click to save">8</button>
+          <span class="slot-hint">shift+click=save</span>
+          <span class="slot-status" id="slotStatus"></span>
+        </div>
+        <div class="toolbar-chip">
+          <span class="toolbar-label">Tracks</span>
+          <button class="global-mute-btn" id="btnGlobalMute" disabled onclick="toggleGlobalMute()">⊘ Mute All</button>
+          <button class="add-track-btn"   id="btnAddTrack"   disabled onclick="addTrack()">+ Add Track</button>
+        </div>
       </div>
 
       <!-- Row 2: Music discovery -->
       <div class="toolbar toolbar-discover">
-        <span class="toolbar-label">Randomize</span>
-        <select id="globalRandStyle" style="font-size:11px;padding:1px 2px" title="Markov pitch style for all-track randomize">
-          <option value="0">Melodic</option>
-          <option value="1">Intervallic</option>
-          <option value="2">Floating</option>
-        </select>
-        <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize track lengths">
-          <input type="checkbox" id="globalRandVaryLen" style="margin:0"> vary len
-        </label>
-        <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize time signatures (steps per bar)">
-          <input type="checkbox" id="globalRandVaryMeter" style="margin:0"> vary meter
-        </label>
-        <button class="gen-btn" id="btnGlobalRand" disabled onclick="globalRandomize()" title="Randomize all tracks with coordinated rhythmic structure (Markov chain, complementary beat roles). Uses the style and structure settings above — ignores per-track Generative tab settings.">⚄ All Tracks</button>
-        <div class="toolbar-sep"></div>
-        <span class="toolbar-label">Phase</span>
-        <button class="gen-btn" id="btnPhaseSetup" disabled onclick="togglePhasePanel()" title="Phase Setup: set coprime track lengths for Eno-style phasing">⇌ Phase Setup</button>
+        <div class="toolbar-chip">
+          <span class="toolbar-label">Randomize</span>
+          <select id="globalRandStyle" style="font-size:11px;padding:1px 2px" title="Markov pitch style for all-track randomize">
+            <option value="0">Melodic</option>
+            <option value="1">Intervallic</option>
+            <option value="2">Floating</option>
+          </select>
+          <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize track lengths">
+            <input type="checkbox" id="globalRandVaryLen" style="margin:0"> vary len
+          </label>
+          <label style="font-size:11px;display:flex;align-items:center;gap:2px;cursor:pointer" title="Also randomize time signatures (steps per bar)">
+            <input type="checkbox" id="globalRandVaryMeter" style="margin:0"> vary meter
+          </label>
+          <button class="gen-btn" id="btnGlobalRand" disabled onclick="globalRandomize()" title="Randomize all tracks with coordinated rhythmic structure (Markov chain, complementary beat roles). Uses the style and structure settings above — ignores per-track Generative tab settings.">⚄ All Tracks</button>
+        </div>
+        <div class="toolbar-chip">
+          <span class="toolbar-label">Phase</span>
+          <button class="gen-btn" id="btnPhaseSetup" disabled onclick="togglePhasePanel()" title="Phase Setup: set coprime track lengths for Eno-style phasing">⇌ Phase Setup</button>
+        </div>
       </div>
 
     </div>
