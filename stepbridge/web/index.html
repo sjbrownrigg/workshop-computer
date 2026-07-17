@@ -964,7 +964,10 @@ document.addEventListener('focusout',()=>setTimeout(_tryDeferredRender,50));
 function _userInteracting(){
   if(ribbonDragging||pointerIsDown)return true;
   const a=document.activeElement;
-  return!!(a&&a!==document.body&&a!==document.documentElement);
+  if(!a||a===document.body||a===document.documentElement)return false;
+  // Buttons keep focus after a click but the user isn't mid-edit — don't block renders.
+  // Only block for elements the user is actively typing into or dragging.
+  return a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA';
 }
 function _tryDeferredRender(){
   if(!deferredRender||_userInteracting())return;
@@ -1513,6 +1516,7 @@ function handleFrame(cmd,payload){
         if(st)st.textContent=pattern.numTracks+' track'+(pattern.numTracks>1?'s':'')+' · '+new Date().toLocaleTimeString();
       }else{
         deferredRender=true;
+        setTimeout(_tryDeferredRender,400); // fallback if focusout/pointerup never fires
       }
     }
   }else if(cmd===RSP.PANEL_STATE){
