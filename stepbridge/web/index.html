@@ -271,7 +271,9 @@
     padding:6px 10px;background:var(--card);}
   .footer-panel{display:none;align-items:center;gap:12px;flex-wrap:wrap;row-gap:5px;}
   .footer-panel.active{display:flex;}
-  .ctrl-small{display:flex;align-items:center;gap:5px;}
+  .ctrl-small{display:flex;align-items:center;gap:5px;
+    background:color-mix(in srgb,var(--surface) 70%,var(--bg));
+    border:1px solid var(--border);border-radius:4px;padding:3px 8px;}
   .ctrl-small label{font-family:var(--mono);font-size:11px;color:var(--dim);}
   .ctrl-small input[type=number]{width:48px;font-size:12px;padding:3px 6px;}
   .ctrl-small button{padding:3px 8px;font-size:12px;}
@@ -2061,7 +2063,7 @@ function buildTrackBlock(ti){
 
   // Mutation (Stockhausen continuous drift) controls
   const mutCtrl=document.createElement('div'); mutCtrl.className='ctrl-small';
-  mutCtrl.style.borderLeft='2px solid var(--border)'; mutCtrl.style.paddingLeft='10px'; mutCtrl.style.marginLeft='8px';
+  mutCtrl.style.marginLeft='4px';
 
   const mutEnableChk=document.createElement('input'); mutEnableChk.type='checkbox';
   mutEnableChk.checked=t.mutEnabled||false;
@@ -2148,7 +2150,7 @@ function buildTrackBlock(ti){
 
   // Single row with pipe separators between groups; note on its own line (flex-basis:100%)
   const chordPresetsCtrl=document.createElement('div');
-  chordPresetsCtrl.style.cssText='display:flex;align-items:center;gap:3px;flex-wrap:wrap;';
+  chordPresetsCtrl.style.cssText='display:flex;align-items:center;gap:3px;flex-wrap:wrap;background:color-mix(in srgb,var(--surface) 70%,var(--bg));border:1px solid var(--border);border-radius:4px;padding:3px 8px;';
   const chordDegsCtrl=null; // degree buttons appended directly into chordPresetsCtrl after a pipe
   const chordModeCtrl=null; // mode/var/pass% appended directly into chordPresetsCtrl after a pipe
   const chordNoteEl=mk('div','flex-basis:100%;font-size:9px;color:var(--dim)',
