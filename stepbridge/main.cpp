@@ -1435,7 +1435,7 @@ int main()
         // Drives the web UI track/step highlight so the panel selection is always
         // visible in the editor without polling.
         {
-            static uint32_t sLastPanelPacked = UINT32_MAX;
+            static uint32_t sLastPanelPacked = 0u; // matches zero-initialized gPattern.panelStatePacked; no spurious broadcast on connect
             const uint32_t packed = gPattern.panelStatePacked;
             if (packed != sLastPanelPacked) {
                 sLastPanelPacked = packed;
