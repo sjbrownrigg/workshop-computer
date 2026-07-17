@@ -55,7 +55,7 @@ extern "C" {
 // Binary protocol: no 7-bit restrictions, no SysEx framing.
 #define CFG_TUD_CDC           1
 #define CFG_TUD_CDC_RX_BUFSIZE 512
-#define CFG_TUD_CDC_TX_BUFSIZE 512
+#define CFG_TUD_CDC_TX_BUFSIZE 2048
 
 // MIDI: note-on/off and MIDI clock only. No SysEx, no control messages.
 #define CFG_TUD_MIDI           1

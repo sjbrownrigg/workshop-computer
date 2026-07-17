@@ -764,13 +764,23 @@ static uint8_t sUndoLength[MAX_TRACKS]    = {};
 static uint8_t sUndoTimeSigNum[MAX_TRACKS] = {};
 static bool    sUndoValid[MAX_TRACKS]      = {};
 
+static void CdcWriteAll(const uint8_t *data, uint32_t len)
+{
+    uint32_t sent = 0;
+    while (sent < len) {
+        uint32_t n = tud_cdc_write(data + sent, len - sent);
+        sent += n;
+        if (n == 0) tud_cdc_write_flush(); // buffer full — flush and retry
+    }
+}
+
 static void CdcSendFrame(uint8_t cmd, const uint8_t *payload, uint16_t paylen)
 {
     if (!tud_cdc_connected()) return;
     uint8_t hdr[4] = {sbproto::STX, cmd,
                       (uint8_t)(paylen & 0xFFu), (uint8_t)(paylen >> 8)};
-    tud_cdc_write(hdr, 4);
-    if (payload && paylen) tud_cdc_write(payload, paylen);
+    CdcWriteAll(hdr, 4);
+    if (payload && paylen) CdcWriteAll(payload, paylen);
     tud_cdc_write_flush();
 }
 
