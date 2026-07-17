@@ -2213,6 +2213,7 @@ function buildTrackBlock(ti){
   });
   chordModeSel.value=t.chordArpMode||0;
   chordModeSel.onchange=()=>{ pattern.tracks[ti].chordArpMode=parseInt(chordModeSel.value); sendChord(); };
+  chordPresetsCtrl.append(chordModeLbl,chordModeSel);
 
   chordPresetsCtrl.appendChild(_pipe());
   const chordVarLbl=mk('label','font-size:10px;color:var(--dim)','Var');
@@ -2225,6 +2226,7 @@ function buildTrackBlock(ti){
   const chordVarVal=mk('span','font-size:10px;color:var(--dim)',kVarLabels[t.chordVariation||0]);
   chordVarIn.oninput=()=>{chordVarVal.textContent=kVarLabels[parseInt(chordVarIn.value)];};
   chordVarIn.onchange=()=>{ pattern.tracks[ti].chordVariation=parseInt(chordVarIn.value); sendChord(); };
+  chordPresetsCtrl.append(chordVarLbl,chordVarIn,chordVarVal);
 
   chordPresetsCtrl.appendChild(_pipe());
   const chordPTLbl=mk('label','font-size:10px;color:var(--dim)','Pass%');
@@ -2236,8 +2238,7 @@ function buildTrackBlock(ti){
   const chordPTVal=mk('span','font-family:var(--mono);font-size:10px',(t.chordPassingTonePct||0)+'%');
   chordPTIn.oninput=()=>{chordPTVal.textContent=chordPTIn.value+'%';};
   chordPTIn.onchange=()=>{ pattern.tracks[ti].chordPassingTonePct=parseInt(chordPTIn.value); sendChord(); };
-
-  chordPresetsCtrl.append(chordModeLbl,chordModeSel,chordVarLbl,chordVarIn,chordVarVal,chordPTLbl,chordPTIn,chordPTVal);
+  chordPresetsCtrl.append(chordPTLbl,chordPTIn,chordPTVal);
 
   // Tabbed footer — Timing | Playback | Generative | Chord | Pitch | MIDI | Output
   const outputNodes=[glideCtrl];
